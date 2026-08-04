@@ -14,9 +14,6 @@ crash.log
 # Credenciales locales
 .env
 
-# Python
-__pycache__/
-*.pyc
+# Node
+node_modules/
 *.db
-.venv/
-.pytest_cache/

@@ -11,39 +11,40 @@ Leer en este orden:
 
 1. [`PLAN.md`](PLAN.md) — el mapa: alcance, arquitectura, contrato de API, roadmap.
 2. [`progress.md`](progress.md) — el diario: qué se hizo, qué falló, próximo paso concreto. **Empezar por acá para saber dónde retomar.**
-3. [`CLAUDE.md`](CLAUDE.md) — cómo trabajamos (simplicidad primero, cambios quirúrgicos, etc.), útil si usás Claude Code en este repo.
+3. [`BITACORA_DESARROLLO.md`](BITACORA_DESARROLLO.md) — registro narrativo de decisiones técnicas y problemas resueltos, para la defensa del PFI.
+4. [`CLAUDE.md`](CLAUDE.md) — cómo trabajamos (simplicidad primero, cambios quirúrgicos, etc.), útil si usás Claude Code en este repo.
 
 ## Estructura del repo
 
 ```
-terraform/       # infra AWS (Wazuh manager). Ver terraform/terraform.tfvars.example
-orchestrator/     # backend Python/FastAPI: webhook Wazuh -> Incident -> DB
+terraform/       # infra AWS (Wazuh manager + víctima). Ver terraform/terraform.tfvars.example
+orchestrator/     # backend Node.js/Express: webhook Wazuh -> Incident -> DB (Prisma)
 ```
 
 ## Estado actual (ver detalle y próximo paso en `progress.md`)
 
-- **Fase 0** (bloqueo de IP vía API de Wazuh): script listo (`orchestrator/block_ip.py`), falta correrlo contra el manager real — todavía en instalación.
+- **Fase 0** (bloqueo de IP vía API de Wazuh): ✅ confirmado contra infraestructura real — `block_ip.js` bloquea una IP de verdad (regla `DROP` verificada en `iptables`).
 - **Fase 1** (webhook → normalización → persistencia → listado): funcionando en local contra un mock de alerta, con tests en verde. Falta conectarlo a Wazuh real.
 
 ## Orchestrator — cómo levantarlo
 
 ```bash
 cd orchestrator
-python -m venv .venv
-./.venv/Scripts/Activate.ps1      # PowerShell (Git Bash: source .venv/Scripts/activate)
-pip install -r requirements.txt
-cp .env.example .env              # completar con credenciales reales cuando existan
-uvicorn app.main:app --reload     # http://127.0.0.1:8000/docs
-pytest -v
+npm install
+npx prisma generate
+npx prisma db push          # crea el SQLite local según prisma/schema.prisma
+cp .env.example .env        # completar con credenciales reales
+npm start                   # http://localhost:8000
+npm test
 ```
 
 Con el server arriba, `POST /api/v1/webhook/wazuh` con el contenido de
 `orchestrator/mocks/wazuh_ssh_bruteforce.json` como body simula una alerta
 real y persiste el incidente; `GET /api/v1/incidents` lo lista.
 
-`block_ip.py` es independiente del server FastAPI: es el spike de Fase 0,
-ejecutá `python block_ip.py` una vez tengas el `.env` con las credenciales
-del manager de Wazuh.
+`block_ip.js` es independiente del server Express: es el spike de Fase 0,
+ejecutá `npm run block-ip` (o `node block_ip.js`) una vez tengas el `.env`
+con las credenciales del manager de Wazuh.
 
 ## Próximo paso
 

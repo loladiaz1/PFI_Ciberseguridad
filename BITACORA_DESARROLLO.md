@@ -10,6 +10,63 @@
 
 ---
 
+## Entrada 2 — 2026-08-04: Migración del orchestrator a Node.js/Express
+
+La Entrada 1 describe el backend inicial construido en Python/FastAPI: se
+eligió por ser la forma más corta y directa de resolver el spike de la
+Fase 0 (autenticación HTTP, un token, una llamada PUT), y esa elección se
+extendió naturalmente al resto del orchestrator (webhook, normalización,
+persistencia) por consistencia.
+
+Ese backend funcionaba correctamente — la Fase 0 ya estaba validada contra
+infraestructura real (ver Entrada 1) y la Fase 1 tenía tests en verde. Sin
+embargo, el documento de propuesta del PFI, ya entregado y evaluado
+formalmente, especifica un stack concreto para el backend/orquestación:
+Node.js v18+, Express, Axios, autenticación JWT, PostgreSQL y Redis. Python
+no figuraba como opción.
+
+Esto plantea una distinción importante: no es un error técnico a corregir,
+sino una restricción externa (el compromiso ya asumido con el documento
+entregado) que prevalece sobre la preferencia de simplicidad que motivó la
+elección original. Frente a esa restricción, la decisión fue migrar el
+orchestrator completo a Node.js antes de seguir construyendo funcionalidad
+nueva sobre una base que iba a tener que reescribirse de todos modos —
+cuanto antes se hiciera el cambio, menos código había que traducir.
+
+### Qué se preservó en la migración
+
+La migración fue una traducción de stack, no un rediseño: la arquitectura,
+los endpoints, el modelo de datos y la lógica de normalización se
+mantuvieron idénticos.
+
+- **Express** reemplaza a FastAPI para el webhook y el listado de
+  incidentes.
+- **Prisma** reemplaza a SQLAlchemy como capa de acceso a datos, con el
+  mismo criterio: SQLite en desarrollo local, migrar a PostgreSQL más
+  adelante es cambiar el `provider` del schema y la variable
+  `DATABASE_URL`, no reescribir código.
+- **Axios** reemplaza a `requests` en `block_ip.js`, conservando el mismo
+  flujo de autenticación (Basic Auth → JWT) y la misma corrección aplicada
+  en la Entrada 1 (la IP va en `alert.data.srcip`, no en `arguments`).
+- **Jest + Supertest** reemplazan a `pytest`, con la misma cobertura de
+  casos (alerta válida, alerta con campos faltantes, listado).
+
+Los tres tests pasaron en la primera corrida contra el nuevo stack, lo cual
+confirma que la migración no introdujo regresiones: la lógica de negocio
+(normalización de alertas, validación, persistencia) es la misma, solo
+cambió el lenguaje y las librerías que la expresan.
+
+### Redis y PostgreSQL
+
+El documento de propuesta menciona también PostgreSQL y Redis. PostgreSQL
+ya estaba contemplado desde el diseño original (no depende del lenguaje);
+Redis quedó deliberadamente fuera del alcance de la demo de 5 minutos
+(documentado en `PLAN.md`, sección "Fuera del MVP") porque no hay un caso
+de uso que lo requiera en el flujo mínimo que se muestra — se deja anotado
+como trabajo futuro ("se activa al escalar"), no como una omisión.
+
+---
+
 ## Entrada 1 — 2026-08-04: Backend inicial y validación del bloqueo automatizado
 
 ### Contexto

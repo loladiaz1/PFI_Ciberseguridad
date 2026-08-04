@@ -44,11 +44,53 @@ _(Cambios de rumbo respecto al PLAN, con el motivo. Para defender ante el tribun
 |---|---|---|
 | 2026-08-04 | Alcance = Opción A recortada, demo 5 min | Deadline 18/08, 2 personas |
 | 2026-08-04 | Víctima del brute-force en VM dedicada (`aws_instance.victim`), no agente local en el manager | El agente 000 rechaza active-response (error 1703); además separa atacante → víctima → manager de forma más realista y defendible. Costo marginal (t3.micro) |
+| 2026-08-04 | Orchestrator migrado de Python/FastAPI a Node.js/Express + Prisma | El documento de propuesta (ya entregado/evaluado) especifica Node.js v18+, Express, Axios, JWT. Se había arrancado en Python por simplicidad del spike, pero al confirmar que el documento ya fue evaluado había que alinear la implementación. Se reescribió todo (Fase 0 y Fase 1) antes de sumar más código sobre la base equivocada. |
 
 ---
 
 ## Bitácora de sesiones
 _(La más reciente arriba. Formato fijo por entrada.)_
+
+### Sesión 2026-08-04 — Migración del orchestrator a Node.js/Express
+- **Objetivo de la sesión:** El documento de propuesta del PFI (ya entregado
+  y evaluado) especifica Node.js + Express + Axios + JWT + PostgreSQL/Redis.
+  El orchestrator se había construido en Python/FastAPI. Alinear la
+  implementación al documento antes de seguir sumando funcionalidad.
+- **Hecho:**
+  - Backend reescrito completo en Node.js v18+/Express: `src/app.js`
+    (`POST /api/v1/webhook/wazuh`, `GET /api/v1/incidents`),
+    `src/normalize.js` (misma lógica de normalización que antes),
+    `src/db.js` + `prisma/schema.prisma` (Prisma ORM, SQLite en dev — cambiar
+    a PostgreSQL cuando exista la instancia es solo cambiar el provider y la
+    `DATABASE_URL`, igual que con SQLAlchemy).
+  - `block_ip.js`: mismo hilo dorado que `block_ip.py` (auth JWT vía Axios +
+    `PUT /active-response`), incluida la corrección de `alert.data.srcip`.
+  - Tests portados a Jest + Supertest (`tests/webhook.test.js`), 3/3 en
+    verde, mismos casos que la suite de pytest anterior.
+  - Archivos Python eliminados (`block_ip.py`, `app/`, `requirements.txt`,
+    `.venv/`, tests de pytest) — quedan en el historial de git si hace falta
+    consultarlos.
+  - `README.md`, `.gitignore` actualizados para reflejar el stack Node.
+  - **Validación completa post-migración, antes de pushear:**
+    - Fase 1: `npm test` (3/3 verde) + prueba manual en vivo (servidor real
+      arriba, `curl` contra `POST /api/v1/webhook/wazuh` y
+      `GET /api/v1/incidents`) — funciona igual que con FastAPI.
+    - Instancias de Wazuh y víctima prendidas de nuevo (estaban `stopped`).
+      Como no hay Elastic IP, la IP pública cambió al prenderlas — se
+      actualizó `WAZUH_HOST` en `.env` a la nueva IP.
+    - Fase 0: `node block_ip.js` contra el manager real → `error: 0`, sin
+      `failed_items`. Confirmado con `sudo iptables -L -n` en la víctima:
+      regla `DROP` real para 8.8.8.8. **El puerto de Node.js reproduce el
+      comportamiento exacto de la versión Python.**
+- **En progreso / a medias:** —
+- **Errores encontrados:** —
+- **Próximo paso concreto:** conectar el webhook real de Wazuh (reemplazar
+  el mock), cierra el resto de la Fase 1. Después: commitear y pushear la
+  migración a Node.
+- **Estado de instancias AWS:** Wazuh y víctima **running** (prendidas para
+  esta validación). **Recordatorio: pararlas de nuevo al terminar.**
+
+---
 
 ### Sesión YYYY-MM-DD — <título corto>
 - **Objetivo de la sesión:**
