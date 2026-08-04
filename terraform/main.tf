@@ -65,6 +65,16 @@ resource "aws_security_group" "wazuh" {
     cidr_blocks = [var.my_ip]
   }
 
+  # Agents connect outbound to the manager on 1514 (events) and 1515
+  # (enrollment). Only the victim instance needs to reach the manager this way.
+  ingress {
+    description     = "Wazuh agent enrollment/events from the victim instance"
+    from_port       = 1514
+    to_port         = 1515
+    protocol        = "tcp"
+    security_groups = [aws_security_group.victim.id]
+  }
+
   egress {
     description = "All outbound (package installs, updates, threat-intel APIs)"
     from_port   = 0
@@ -101,5 +111,71 @@ resource "aws_instance" "wazuh" {
   tags = {
     Name = "micro-soar-wazuh"
     Role = "wazuh-xdr"
+  }
+}
+
+# ---------------------------------------------------------------------------
+# Victim instance (brute-force SSH target, runs a Wazuh agent)
+# ---------------------------------------------------------------------------
+
+resource "aws_security_group" "victim" {
+  name        = "micro-soar-victim-sg"
+  description = "Spike 0: SSH (22) from my IP (the attacker laptop)"
+  vpc_id      = data.aws_vpc.default.id
+
+  ingress {
+    description = "SSH from my IP (attacker laptop, brute-forced in the demo)"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = [var.my_ip]
+  }
+
+  egress {
+    description = "All outbound (package installs, agent to manager enrollment)"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "micro-soar-victim-sg"
+  }
+}
+
+resource "aws_instance" "victim" {
+  ami                         = data.aws_ami.ubuntu.id
+  instance_type               = var.victim_instance_type
+  subnet_id                   = data.aws_subnets.default.ids[0]
+  key_name                    = aws_key_pair.wazuh.key_name
+  vpc_security_group_ids      = [aws_security_group.victim.id]
+  associate_public_ip_address = true
+
+  root_block_device {
+    volume_size = var.victim_root_volume_gb
+    volume_type = "gp3"
+  }
+
+  # Installs the Wazuh agent and enrolls it against the manager's private IP
+  # (same VPC, no need to go through the public internet).
+  user_data = <<-EOT
+    #!/bin/bash
+    set -euxo pipefail
+    echo 'ubuntu ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/99-ubuntu-nopasswd
+    chmod 440 /etc/sudoers.d/99-ubuntu-nopasswd
+    curl -s https://packages.wazuh.com/key/GPG-KEY-WAZUH | gpg --no-default-keyring --keyring gnupg-ring:/usr/share/keyrings/wazuh.gpg --import
+    chmod 644 /usr/share/keyrings/wazuh.gpg
+    echo "deb [signed-by=/usr/share/keyrings/wazuh.gpg] https://packages.wazuh.com/4.x/apt/ stable main" | tee -a /etc/apt/sources.list.d/wazuh.list
+    apt-get update
+    WAZUH_MANAGER='${aws_instance.wazuh.private_ip}' apt-get install -y wazuh-agent=${var.wazuh_agent_version}-1
+    systemctl daemon-reload
+    systemctl enable wazuh-agent
+    systemctl start wazuh-agent
+  EOT
+
+  tags = {
+    Name = "micro-soar-victim"
+    Role = "brute-force-target"
   }
 }

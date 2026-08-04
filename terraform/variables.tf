@@ -21,9 +21,9 @@ variable "public_key_path" {
 }
 
 variable "instance_type" {
-  description = "EC2 instance type for Wazuh. t3.medium (4 GB) is the practical floor for the all-in-one install; it will be tight."
+  description = "EC2 instance type for Wazuh. m7i-flex.large (2 vCPU, 8 GB) gives the all-in-one install (manager + indexer + dashboard) real headroom; t3.medium (4 GB) is the tight floor if cost pressure forces a downgrade."
   type        = string
-  default     = "t3.medium"
+  default     = "m7i-flex.large"
 }
 
 variable "root_volume_gb" {
@@ -33,7 +33,25 @@ variable "root_volume_gb" {
 }
 
 variable "install_wazuh" {
-  description = "true  -> user_data runs the Wazuh all-in-one installer on first boot. false -> bare Ubuntu, you install Wazuh by hand (recommended for the spike so you see the API/token flow yourself)."
+  description = "true  -> user_data runs the Wazuh all-in-one installer on first boot. false -> bare Ubuntu, you install Wazuh by hand."
   type        = bool
-  default     = false
+  default     = true
+}
+
+variable "victim_instance_type" {
+  description = "EC2 instance type for the brute-force victim. Just needs to run sshd + a Wazuh agent, so the cheapest general-purpose size is enough."
+  type        = string
+  default     = "t3.micro"
+}
+
+variable "victim_root_volume_gb" {
+  description = "Root EBS (gp3) volume size in GB for the victim instance."
+  type        = number
+  default     = 8
+}
+
+variable "wazuh_agent_version" {
+  description = "Wazuh agent package version to install on the victim (must match the manager's installed version exactly, or enrollment is rejected with 'Incompatible version'). Check the manager's version with: sudo /var/ossec/bin/wazuh-control info"
+  type        = string
+  default     = "4.8.2"
 }

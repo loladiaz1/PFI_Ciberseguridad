@@ -59,10 +59,15 @@ Todo lo que no sostenga este flujo es secundario para la demo.
 
 **Híbrido.** Cloud para lo que prueba la tesis, local solo para desarrollar.
 
-- **AWS (Terraform ya listo):** Wazuh (t3.medium) + orquestador (t3.small),
+- **AWS (Terraform ya listo):** Wazuh (m7i-flex.large, RAM real para el
+  all-in-one) + víctima (t3.micro) + orquestador (t3.small, pendiente),
   misma VPC / misma AZ, security groups cerrados, sin Elastic IP, sin NAT.
-- **Víctima del brute-force:** agente local sobre la instancia de Wazuh (no hace
-  falta una tercera máquina para la demo).
+- **Víctima del brute-force:** VM Ubuntu dedicada (`aws_instance.victim` en
+  `terraform/main.tf`), no el manager. El agente 000 (el propio manager)
+  rechaza active-response (Wazuh error 1703), así que hace falta un agente
+  real — de paso separa atacante → víctima → manager de forma más realista
+  para la demo. El agente se instala y se registra solo en el boot (user_data)
+  contra la IP privada del manager, misma VPC.
 - **Atacante:** laptop propia con hydra o un loop de ssh. No es infra.
 - **App:** celular físico (ideal, la biometría se ve real).
 - **Overlay:** Tailscale en las dos instancias y el celular. La app habla con

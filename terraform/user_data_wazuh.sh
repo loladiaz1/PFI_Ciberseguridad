@@ -4,6 +4,10 @@
 # Docs: https://documentation.wazuh.com/current/quickstart.html
 set -euxo pipefail
 
+# No depender de que cloud-init deje sudo sin password para "ubuntu" (a veces no lo hace).
+echo 'ubuntu ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/99-ubuntu-nopasswd
+chmod 440 /etc/sudoers.d/99-ubuntu-nopasswd
+
 cd /root
 curl -sO https://packages.wazuh.com/4.x/wazuh-install.sh
 

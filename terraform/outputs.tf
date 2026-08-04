@@ -17,3 +17,13 @@ output "wazuh_api_endpoint" {
   description = "Wazuh API base URL (available once Wazuh is installed)."
   value       = "https://${aws_instance.wazuh.public_ip}:55000"
 }
+
+output "victim_public_ip" {
+  description = "Public IP of the victim instance (brute-force target)."
+  value       = aws_instance.victim.public_ip
+}
+
+output "victim_ssh_command" {
+  description = "Ready-to-use SSH command for the victim instance."
+  value       = "ssh -i ${replace(pathexpand(var.public_key_path), ".pub", "")} ubuntu@${aws_instance.victim.public_ip}"
+}
