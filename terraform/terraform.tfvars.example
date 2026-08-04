@@ -1,0 +1,8 @@
+# Copy this file to terraform.tfvars and fill in your values.
+# terraform.tfvars is git-ignored by convention (it holds your IP).
+
+aws_region      = "us-east-1"
+my_ip           = "REPLACE_ME/32" # curl -s https://checkip.amazonaws.com  ->  add /32
+public_key_path = "~/.ssh/id_ed25519.pub"
+instance_type   = "t3.medium"
+install_wazuh   = false # flip to true to auto-install Wazuh on boot

@@ -1,0 +1,22 @@
+# Terraform state (can contain secrets)
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+
+# Your real variables (holds your public IP)
+terraform.tfvars
+*.auto.tfvars
+
+# Crash logs
+crash.log
+
+# Credenciales locales
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.db
+.venv/
+.pytest_cache/
