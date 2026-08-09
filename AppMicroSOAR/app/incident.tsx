@@ -1,168 +1,185 @@
-import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from "react-native";
 import { router } from "expo-router";
+import { MaterialIcons } from "@expo/vector-icons";
+import { useFonts, Roboto_400Regular, Roboto_600SemiBold, Roboto_700Bold } from "@expo-google-fonts/roboto";
+
 import Colors from "../styles/colors";
 import BottomNav from "../components/BottomNav";
 import { BrandLogo } from "../components/BrandLogo";
-import MaterialIcons from "@expo/vector-icons/build/MaterialIcons";
 
 export default function IncidentDetail() {
+  const [fontsLoaded] = useFonts({
+    Roboto_400Regular,
+    Roboto_600SemiBold,
+    Roboto_700Bold,
+  });
 
-    return (
+  if (!fontsLoaded) {
+    return <View style={styles.container} />;
+  }
 
-        <View style={styles.container}>
-            <BrandLogo showText={false} />
-
-            <Text style={styles.title}>
-                SSH Brute Force
-            </Text>
-
-            <View style={styles.card}>
-
-                <Text style={styles.label}>Severity</Text>
-                <View style={styles.statusRow}>
-                <MaterialIcons
-                    name="error"
-                    size={22}
-                    color={Colors.danger}
-                        />
-                 <Text style={styles.critical}>CRITICAL</Text>
+  return (
+    <View style={styles.container}>
+      <ScrollView contentContainerStyle={styles.content}>
+        {/* FORTIA BRAND */}
+        <View style={styles.brandHeader}>
+          <BrandLogo showText={false} size={140} />
+          <Text style={styles.brandName}>Fortia</Text>
         </View>
 
-                <Text style={styles.label}>Target</Text>
-                <Text style={styles.value}>SERVER-02</Text>
+        <Text style={styles.title}>SSH Brute Force</Text>
 
-                <Text style={styles.label}>Attacker IP</Text>
-                <Text style={styles.value}>
-                    185.220.101.55
-                </Text>
+        <View style={styles.card}>
+          <Text style={styles.label}>Severity</Text>
+          <View style={styles.statusRow}>
+            <MaterialIcons name="error" size={22} color={Colors.danger} />
+            <Text style={styles.critical}>CRITICAL</Text>
+          </View>
 
-                <Text style={styles.label}>Country</Text>
-                <Text style={styles.value}>Russia</Text>
+          <Text style={styles.label}>Target</Text>
+          <Text style={styles.value}>SERVER-02</Text>
 
-                <Text style={styles.label}>Attempts</Text>
-                <Text style={styles.value}>346</Text>
+          <Text style={styles.label}>Attacker IP</Text>
+          <Text style={styles.value}>185.220.101.55</Text>
 
-            </View>
+          <Text style={styles.label}>Country</Text>
+          <Text style={styles.value}>Russia</Text>
 
-            <View style={styles.recommendation}>
-
-                <Text style={styles.recTitle}>
-                    Automatic Recommendation
-                </Text>
-
-                <Text style={styles.recText}>
-                    This IP has a malicious reputation and
-                    is attacking a critical asset.
-                </Text>
-
-                <Text style={styles.recText}>
-                    Recommended action:
-                </Text>
-
-                <Text style={styles.block}>
-                    BLOCK IP
-                </Text>
-
-            </View>
-
-            <TouchableOpacity
-                style={styles.button}
-                onPress={() => router.push("/confirm")}
-            >
-
-                <Text style={styles.buttonText}>
-                    BLOCK IP
-                </Text>
-
-            </TouchableOpacity>
-            <BottomNav />
-
+          <Text style={styles.label}>Attempts</Text>
+          <Text style={styles.value}>346</Text>
         </View>
 
-    );
+        <View style={styles.recommendation}>
+          <Text style={styles.recTitle}>Automatic Recommendation</Text>
 
+          <Text style={styles.recText}>
+            This IP has a malicious reputation and is attacking a critical asset.
+          </Text>
+
+          <Text style={styles.recText}>Recommended action:</Text>
+
+          <Text style={styles.block}>BLOCK IP</Text>
+        </View>
+
+        <TouchableOpacity style={styles.button} onPress={() => router.push("/confirm")}>
+          <Text style={styles.buttonText}>BLOCK IP</Text>
+        </TouchableOpacity>
+      </ScrollView>
+
+      <BottomNav />
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: Colors.background,
+  },
 
-container:{
-flex:1,
-backgroundColor:"#F4F7FA",
-padding:20,
-paddingTop:60
-},
+  content: {
+    flexGrow: 1,
+    padding: 20,
+    paddingTop: 35,
+    paddingBottom: 110,
+  },
 
-title:{
-fontSize:30,
-fontWeight:"bold",
-marginBottom:20
-},
+  // =========================
+  // FORTIA BRAND
+  // =========================
+  brandHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    marginLeft: -12,
+    marginBottom: 15,
+  },
 
-card:{
-backgroundColor:"white",
-padding:20,
-borderRadius:16
-},
+  brandName: {
+    fontSize: 34,
+    fontFamily: "Roboto_700Bold",
+    color: Colors.primary,
+    marginLeft: 4,
+  },
 
-label:{
-marginTop:15,
-color:"#777"
-},
+  title: {
+    fontSize: 28,
+    fontWeight: "bold",
+    color: Colors.text,
+    marginBottom: 20,
+  },
 
-statusRow:{
-flexDirection:"row",
-alignItems:"center",
-gap:8,
-marginTop:8
-},
+  card: {
+    backgroundColor: Colors.card,
+    padding: 20,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
 
-value:{
-fontSize:18,
-fontWeight:"600"
-},
+  label: {
+    marginTop: 15,
+    color: Colors.textSecondary,
+  },
 
-critical:{
-fontWeight:"bold",
-fontSize:22,
-color:"#E53935"
-},
+  statusRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 8,
+  },
 
-recommendation:{
-backgroundColor:"#FFF4E5",
-padding:20,
-borderRadius:16,
-marginTop:25
-},
+  value: {
+    fontSize: 18,
+    fontFamily: "Roboto_600SemiBold",
+    color: Colors.text,
+  },
 
-recTitle:{
-fontWeight:"bold",
-fontSize:18,
-marginBottom:10
-},
+  critical: {
+    fontFamily: "Roboto_700Bold",
+    fontSize: 22,
+    color: Colors.danger,
+  },
 
-recText:{
-marginBottom:8
-},
+  recommendation: {
+    backgroundColor: Colors.card2,
+    padding: 20,
+    borderRadius: 16,
+    marginTop: 25,
+    borderWidth: 1,
+    borderColor: Colors.warning,
+  },
 
-block:{
-marginTop:10,
-fontWeight:"bold",
-color:"#E53935",
-fontSize:20
-},
+  recTitle: {
+    fontWeight: "bold",
+    fontSize: 18,
+    marginBottom: 10,
+    color: Colors.text,
+  },
 
-button:{
-marginTop:35,
-backgroundColor:"#D32F2F",
-padding:18,
-borderRadius:14
-},
+  recText: {
+    marginBottom: 8,
+    color: Colors.textSecondary,
+  },
 
-buttonText:{
-textAlign:"center",
-color:"white",
-fontWeight:"bold",
-fontSize:18
-}
+  block: {
+    marginTop: 10,
+    fontFamily: "Roboto_700Bold",
+    color: Colors.danger,
+    fontSize: 20,
+  },
 
+  button: {
+    marginTop: 35,
+    backgroundColor: Colors.danger,
+    padding: 18,
+    borderRadius: 14,
+  },
+
+  buttonText: {
+    textAlign: "center",
+    color: "#fff",
+    fontWeight: "bold",
+    fontSize: 18,
+  },
 });
