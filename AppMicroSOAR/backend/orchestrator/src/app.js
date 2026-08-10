@@ -1,30 +1,20 @@
 const express = require("express");
-const { prisma } = require("./db");
-const { normalizeWazuhAlert } = require("./normalize");
+const cors = require("cors");
+
+const userRoutes = require("./routes/users");
 
 const app = express();
+
+app.use(cors());
 app.use(express.json());
 
-app.post("/api/v1/webhook/wazuh", async (req, res) => {
-  let fields;
-  try {
-    fields = normalizeWazuhAlert(req.body);
-  } catch (err) {
-    return res.status(422).json({ detail: err.message });
-  }
-
-  const incident = await prisma.incident.create({ data: fields });
-  res.status(201).json(incident);
+app.get("/health", (req, res) => {
+  res.json({
+    status: "ok",
+    service: "Micro-SOAR Orchestrator",
+  });
 });
 
-app.get("/api/v1/incidents", async (_req, res) => {
-  const incidents = await prisma.incident.findMany({ orderBy: { id: "desc" } });
-  res.json(incidents);
-});
+app.use("/api/users", userRoutes);
 
-if (require.main === module) {
-  const port = process.env.PORT || 8000;
-  app.listen(port, () => console.log(`Micro-SOAR Orchestrator escuchando en :${port}`));
-}
-
-module.exports = { app };
+module.exports = app;

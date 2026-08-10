@@ -1,0 +1,1 @@
+exports.getThreatIntel = async () => [];
