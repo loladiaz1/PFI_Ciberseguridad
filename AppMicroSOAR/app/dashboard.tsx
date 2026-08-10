@@ -10,7 +10,7 @@ import { router } from "expo-router";
 
 import Colors from "../styles/colors";
 import BottomNav from "../components/BottomNav";
-import { BrandLogo } from "../components/BrandLogo";
+import { BrandHeader } from "../components/ui/BrandHeader";
 
 const recent = [
 
@@ -48,7 +48,7 @@ return(
 
 <ScrollView>
 
-<BrandLogo showText={false} />
+<BrandHeader />
 
 <Text style={styles.greeting}>
 Good Evening

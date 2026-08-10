@@ -5,7 +5,7 @@ import { useFonts, Roboto_400Regular, Roboto_600SemiBold, Roboto_700Bold } from 
 
 import Colors from "../styles/colors";
 import BottomNav from "../components/BottomNav";
-import { BrandLogo } from "../components/BrandLogo";
+import { BrandHeader } from "../components/ui/BrandHeader";
 
 export default function IncidentDetail() {
   const [fontsLoaded] = useFonts({
@@ -21,11 +21,7 @@ export default function IncidentDetail() {
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
-        {/* FORTIA BRAND */}
-        <View style={styles.brandHeader}>
-          <BrandLogo showText={false} size={140} />
-          <Text style={styles.brandName}>Fortia</Text>
-        </View>
+        <BrandHeader />
 
         <Text style={styles.title}>SSH Brute Force</Text>
 

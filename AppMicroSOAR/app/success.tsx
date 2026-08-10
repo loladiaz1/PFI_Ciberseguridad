@@ -12,7 +12,7 @@ import { useFonts, Roboto_400Regular, Roboto_600SemiBold, Roboto_700Bold } from 
 
 import Colors from "../styles/colors";
 import BottomNav from "../components/BottomNav";
-import { BrandLogo } from "../components/BrandLogo";
+import { BrandHeader } from "../components/ui/BrandHeader";
 
 // Fallback por si esta pantalla no recibe color de error definido en styles/colors.ts
 const ERROR_COLOR = "#dc2626";
@@ -48,11 +48,7 @@ export default function SuccessScreen() {
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
-        {/* FORTIA BRAND */}
-        <View style={styles.brandHeader}>
-          <BrandLogo showText={false} size={140} />
-          <Text style={styles.brandName}>Fortia</Text>
-        </View>
+        <BrandHeader />
 
         {/* STATUS ICON */}
         <MaterialCommunityIcons

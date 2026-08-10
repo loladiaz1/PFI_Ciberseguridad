@@ -2,7 +2,7 @@ import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import { router } from "expo-router";
 import Colors from "../styles/colors";
 import BottomNav from "../components/BottomNav";
-import { BrandLogo } from "../components/BrandLogo";
+import { BrandHeader } from "../components/ui/BrandHeader";
 import { MaterialCommunityIcons, MaterialIcons } from "@expo/vector-icons";
 
 export default function IncidentDetail() {
@@ -10,7 +10,7 @@ export default function IncidentDetail() {
     return (
 
         <View style={styles.container}>
-            <BrandLogo showText={false} />
+            <BrandHeader />
 
             <Text style={styles.title}>
                 SSH Brute Force

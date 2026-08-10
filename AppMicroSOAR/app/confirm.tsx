@@ -2,13 +2,13 @@ import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import { router } from "expo-router";
 import Colors from "../styles/colors";
 import BottomNav from "../components/BottomNav";
-import { BrandLogo } from "../components/BrandLogo";
+import { BrandHeader } from "../components/ui/BrandHeader";
 
 
 export default function ConfirmScreen() {
   return (
     <View style={styles.container}>
-      <BrandLogo showText={false} />
+      <BrandHeader />
       <Text style={styles.icon}>⚠️</Text>
 
       <Text style={styles.title}>

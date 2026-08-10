@@ -3,7 +3,7 @@ import { router } from "expo-router";
 import { useState } from "react";
 import Colors from "../styles/colors";
 import BottomNav from "../components/BottomNav";
-import { BrandLogo } from "../components/BrandLogo";
+import { BrandHeader } from "../components/ui/BrandHeader";
 
 
 export default function LoginScreen() {
@@ -19,7 +19,7 @@ export default function LoginScreen() {
     <View style={styles.container}>
 
       <View style={styles.logo}>
-        <BrandLogo showText={true} />
+        <BrandHeader />
         <Text style={styles.subtitle}>Security Operations Center</Text>
       </View>
 

@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 
 import { Header } from '../components/Header';
-import { BrandLogo } from '../components/BrandLogo';
+import { BrandHeader } from '../components/ui/BrandHeader';
 import { signUp } from '../services/auth';
 import Colors from "../styles/colors";
 
@@ -20,7 +20,7 @@ export default function RegisterScreen() {
 
   return (
     <View style={styles.container}>
-      <BrandLogo showText={false} />
+      <BrandHeader />
       <Header title="Create account" subtitle="Join your security team" />
       <TextInput style={styles.input} placeholder="Name" value={name} onChangeText={setName} />
       <TextInput style={styles.input} placeholder="Email" value={email} onChangeText={setEmail} />

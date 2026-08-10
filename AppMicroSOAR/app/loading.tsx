@@ -4,7 +4,7 @@ import { router } from "expo-router";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import Colors from "../styles/colors";
 import BottomNav from "../components/BottomNav";
-import { BrandLogo } from "../components/BrandLogo";
+import { BrandHeader } from "../components/ui/BrandHeader";
 
 // Pasos que se muestran uno por uno mientras "corre" la mitigación
 const STEPS = [
@@ -82,7 +82,7 @@ export default function LoadingScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.content}>
-        <BrandLogo showText={false} size={96} />
+        <BrandHeader logoSize={96} />
 
         <ActivityIndicator size="large" color={Colors.primary} style={styles.spinner} />
 
