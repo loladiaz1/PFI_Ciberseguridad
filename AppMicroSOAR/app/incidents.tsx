@@ -1,173 +1,150 @@
-import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from "react-native";
 import { router } from "expo-router";
+import { useCallback, useState } from "react";
+import { useFocusEffect } from "@react-navigation/native";
 import Colors from "../styles/colors";
 import BottomNav from "../components/BottomNav";
 import { BrandLogo } from "../components/BrandLogo";
-import { MaterialCommunityIcons, MaterialIcons } from "@expo/vector-icons";
+import { getIncidents } from "../services/api";
+import { severityLabel } from "../utils/severity";
+import type { Incident } from "../types";
 
-export default function IncidentDetail() {
+export default function IncidentsList() {
+    const [incidents, setIncidents] = useState<Incident[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState("");
 
-    return (
-
-        <View style={styles.container}>
-            <BrandLogo showText={false} />
-
-            <Text style={styles.title}>
-                SSH Brute Force
-            </Text>
-
-            <View style={styles.card}>
-
-                <Text style={styles.label}>Severity</Text>
-                <View style={styles.statusRow}>
-  <MaterialIcons
-    name="error"
-    size={22}
-    color={Colors.danger}
-  />
-  <Text style={styles.critical}>CRITICAL</Text>
-</View>
-
-                <Text style={styles.label}>Target</Text>
-                <Text style={styles.value}>SERVER-02</Text>
-
-                <Text style={styles.label}>Attacker IP</Text>
-                <Text style={styles.value}>
-                    185.220.101.55
-                </Text>
-
-                <Text style={styles.label}>Country</Text>
-                <Text style={styles.value}>Russia</Text>
-
-                <Text style={styles.label}>Attempts</Text>
-                <Text style={styles.value}>346</Text>
-
-            </View>
-
-            <View style={styles.recommendation}>
-
-                <Text style={styles.recTitle}>
-                    Automatic Recommendation
-                </Text>
-
-                <Text style={styles.recText}>
-                    This IP has a malicious reputation and
-                    is attacking a critical asset.
-                </Text>
-
-                <Text style={styles.recText}>
-                    Recommended action:
-                </Text>
-
-                <Text style={styles.block}>
-                    BLOCK IP
-                </Text>
-
-            </View>
-
-            <TouchableOpacity
-                style={styles.button}
-                onPress={() => router.push("/confirm")}
-            >
-
-                <Text style={styles.buttonText}>
-                    BLOCK IP
-                </Text>
-
-            </TouchableOpacity>
-            <BottomNav />
-
-        </View>
-
+    useFocusEffect(
+        useCallback(() => {
+            let cancelled = false;
+            setLoading(true);
+            getIncidents()
+                .then(({ data }) => {
+                    if (!cancelled) setIncidents(data);
+                })
+                .catch(() => {
+                    if (!cancelled) setError("Could not load incidents");
+                })
+                .finally(() => {
+                    if (!cancelled) setLoading(false);
+                });
+            return () => {
+                cancelled = true;
+            };
+        }, [])
     );
 
+    return (
+        <View style={styles.container}>
+            <ScrollView>
+                <BrandLogo showText={false} />
+
+                <Text style={styles.title}>Incidents</Text>
+
+                {loading && <ActivityIndicator size="large" style={styles.spinner} />}
+                {error ? <Text style={styles.error}>{error}</Text> : null}
+                {!loading && !error && incidents.length === 0 && (
+                    <Text style={styles.empty}>No incidents yet.</Text>
+                )}
+
+                {incidents.map((incident) => {
+                    const severity = severityLabel(incident.severity);
+                    return (
+                        <TouchableOpacity
+                            key={incident.id}
+                            style={styles.incident}
+                            onPress={() => router.push({ pathname: "/incident", params: { id: String(incident.id) } })}
+                        >
+                            <View>
+                                <Text style={styles.incidentTitle}>{incident.hostname}</Text>
+                                <Text style={styles.server}>{incident.srcIp}</Text>
+                            </View>
+
+                            <View style={styles.badges}>
+                                <Text style={[styles.badge, { backgroundColor: severity.color }]}>
+                                    {severity.label}
+                                </Text>
+                                <Text style={styles.status}>{incident.status}</Text>
+                            </View>
+                        </TouchableOpacity>
+                    );
+                })}
+            </ScrollView>
+
+            <BottomNav />
+        </View>
+    );
 }
 
 const styles = StyleSheet.create({
+    container: {
+        flex: 1,
+        backgroundColor: Colors.background,
+        paddingTop: 60,
+    },
 
-container:{
-  flex:1,
-  backgroundColor:Colors.background,
-  padding:20,
-  paddingTop:60
-},
+    title: {
+        fontSize: 30,
+        fontWeight: "bold",
+        color: Colors.text,
+        paddingHorizontal: 20,
+        marginBottom: 10,
+    },
 
-title:{
-  fontSize:30,
-  fontWeight:"bold",
-  marginBottom:20,
-  color:Colors.text
-},
+    spinner: {
+        marginTop: 30,
+    },
 
-card:{
-  backgroundColor:Colors.card,
-  padding:20,
-  borderRadius:16,
-  borderWidth:1,
-  borderColor:Colors.border
-},
+    error: {
+        color: Colors.danger,
+        paddingHorizontal: 20,
+        marginTop: 10,
+    },
 
-statusRow:{
-  flexDirection:"row",
-  alignItems:"center",
-  marginBottom:12
-},
+    empty: {
+        color: Colors.textSecondary,
+        paddingHorizontal: 20,
+        marginTop: 10,
+    },
 
-label:{
-  color:Colors.textSecondary
-},
+    incident: {
+        backgroundColor: Colors.card,
+        marginHorizontal: 20,
+        marginTop: 15,
+        padding: 20,
+        borderRadius: 18,
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center",
+    },
 
-value:{
-  fontSize:18,
-  fontWeight:"600",
-  color:Colors.text
-},
+    incidentTitle: {
+        fontSize: 18,
+        fontWeight: "bold",
+        color: Colors.text,
+    },
 
-critical:{
-  marginLeft:8,
-  fontWeight:"bold",
-  fontSize:22,
-  color:Colors.danger
-},
+    server: {
+        color: Colors.textSecondary,
+        marginTop: 6,
+    },
 
-recommendation:{
-  backgroundColor:Colors.card2,
-  padding:20,
-  borderRadius:16,
-  marginTop:25,
-  borderWidth:1,
-  borderColor:Colors.warning
-},
+    badges: {
+        alignItems: "flex-end",
+    },
 
-recTitle:{
-  fontWeight:"bold",
-  fontSize:18,
-  marginBottom:10,
-  color:Colors.warning
-},
+    badge: {
+        paddingHorizontal: 14,
+        paddingVertical: 6,
+        borderRadius: 20,
+        color: "white",
+        fontWeight: "bold",
+        overflow: "hidden",
+    },
 
-recText:{
-  marginBottom:8,
-  color:Colors.text
-},
-
-block:{
-  marginTop:10,
-  fontWeight:"bold",
-  color:Colors.danger,
-  fontSize:20
-},
-
-button:{
-  marginTop:35,
-  backgroundColor:Colors.danger,
-  padding:18,
-  borderRadius:14
-},
-
-buttonText:{
-  textAlign:"center",
-  color:Colors.text,
-  fontWeight:"bold",
-  fontSize:18
-}});
+    status: {
+        color: Colors.textSecondary,
+        marginTop: 6,
+        textTransform: "capitalize",
+    },
+});

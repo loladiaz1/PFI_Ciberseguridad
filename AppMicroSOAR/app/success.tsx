@@ -1,10 +1,18 @@
 import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import Colors from "../styles/colors";
 import BottomNav from "../components/BottomNav";
 import { BrandLogo } from "../components/BrandLogo";
 
 export default function SuccessScreen(){
+
+const { srcIp, hostname, elapsedMs } = useLocalSearchParams<{
+    srcIp: string;
+    hostname: string;
+    elapsedMs: string;
+}>();
+
+const seconds = elapsedMs ? (Number(elapsedMs) / 1000).toFixed(1) : "-";
 
 return(
 
@@ -31,7 +39,7 @@ Blocked IP
 </Text>
 
 <Text style={styles.value}>
-185.220.101.55
+{srcIp}
 </Text>
 
 <Text style={styles.label}>
@@ -39,7 +47,7 @@ Target
 </Text>
 
 <Text style={styles.value}>
-SERVER-02
+{hostname}
 </Text>
 
 <Text style={styles.label}>
@@ -47,7 +55,7 @@ Execution Time
 </Text>
 
 <Text style={styles.value}>
-1.4 seconds
+{seconds} seconds
 </Text>
 
 </View>

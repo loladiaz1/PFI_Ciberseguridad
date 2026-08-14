@@ -6,3 +6,8 @@ my_ip           = "REPLACE_ME/32" # curl -s https://checkip.amazonaws.com  ->  a
 public_key_path = "~/.ssh/id_ed25519.pub"
 instance_type   = "t3.medium"
 install_wazuh   = false # flip to true to auto-install Wazuh on boot
+
+# Opcional: Settings -> Keys -> Generate auth key (reusable) en el admin
+# console de Tailscale. Si se deja vacio, el orchestrator arranca sin
+# Tailscale y hay que correr "sudo tailscale up" a mano por SSH.
+# tailscale_authkey = "tskey-auth-..."

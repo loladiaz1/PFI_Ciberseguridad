@@ -4,15 +4,25 @@ import { useState } from "react";
 import Colors from "../styles/colors";
 import BottomNav from "../components/BottomNav";
 import { BrandLogo } from "../components/BrandLogo";
-
+import { signIn } from "../services/auth";
 
 export default function LoginScreen() {
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const login = () => {
-    // Después reemplazamos esto por axios al backend
-    router.push("/dashboard");
+  const login = async () => {
+    setError("");
+    setLoading(true);
+    try {
+      await signIn(username, password);
+      router.replace("/dashboard");
+    } catch {
+      setError("Invalid credentials");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -23,14 +33,15 @@ export default function LoginScreen() {
         <Text style={styles.subtitle}>Security Operations Center</Text>
       </View>
 
-      <Text style={styles.label}>Email</Text>
+      <Text style={styles.label}>Username</Text>
 
       <TextInput
-        placeholder="example@company.com"
+        placeholder="analyst"
         placeholderTextColor="#888"
+        autoCapitalize="none"
         style={styles.input}
-        value={email}
-        onChangeText={setEmail}
+        value={username}
+        onChangeText={setUsername}
       />
 
       <Text style={styles.label}>Password</Text>
@@ -44,8 +55,10 @@ export default function LoginScreen() {
         onChangeText={setPassword}
       />
 
-      <TouchableOpacity style={styles.loginButton} onPress={login}>
-        <Text style={styles.loginText}>LOGIN</Text>
+      {error ? <Text style={styles.error}>{error}</Text> : null}
+
+      <TouchableOpacity style={styles.loginButton} onPress={login} disabled={loading}>
+        <Text style={styles.loginText}>{loading ? "SIGNING IN..." : "LOGIN"}</Text>
       </TouchableOpacity>
 
       <TouchableOpacity onPress={() => router.push("/register")}>
@@ -124,6 +137,12 @@ const styles = StyleSheet.create({
     textAlign:"center",
     marginTop:25,
     color:Colors.primary
+  },
+
+  error:{
+    color:Colors.danger,
+    marginTop:-8,
+    marginBottom:12
   }
 
 });
