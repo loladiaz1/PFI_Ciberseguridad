@@ -1,9 +1,8 @@
-import { View, Text, TextInput, TouchableOpacity, StyleSheet } from "react-native";
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Image } from "react-native";
 import { router } from "expo-router";
 import { useState } from "react";
 import Colors from "../styles/colors";
 import BottomNav from "../components/BottomNav";
-import { BrandHeader } from "../components/ui/BrandHeader";
 
 
 export default function LoginScreen() {
@@ -19,34 +18,38 @@ export default function LoginScreen() {
     <View style={styles.container}>
 
       <View style={styles.logo}>
-        <BrandHeader />
-        <Text style={styles.subtitle}>Security Operations Center</Text>
+        <Image
+          source={require('../assets/images/logo.png')}
+          style={styles.logoImage}
+          resizeMode="contain"
+        />
+        <Text style={styles.title}>FORTIA</Text>
       </View>
 
-      <Text style={styles.label}>Email</Text>
+      <View style={styles.formSection}>
+        <TextInput
+          placeholder="example@company.com"
+          placeholderTextColor={Colors.border}
+          style={styles.input}
+          value={email}
+          onChangeText={setEmail}
+          autoCapitalize="none"
+          keyboardType="email-address"
+        />
 
-      <TextInput
-        placeholder="example@company.com"
-        placeholderTextColor="#888"
-        style={styles.input}
-        value={email}
-        onChangeText={setEmail}
-      />
+        <TextInput
+          placeholder="Password"
+          placeholderTextColor={Colors.border}
+          secureTextEntry
+          style={styles.input}
+          value={password}
+          onChangeText={setPassword}
+        />
 
-      <Text style={styles.label}>Password</Text>
-
-      <TextInput
-        placeholder="********"
-        placeholderTextColor="#888"
-        secureTextEntry
-        style={styles.input}
-        value={password}
-        onChangeText={setPassword}
-      />
-
-      <TouchableOpacity style={styles.loginButton} onPress={login}>
-        <Text style={styles.loginText}>LOGIN</Text>
-      </TouchableOpacity>
+        <TouchableOpacity style={styles.loginButton} onPress={login}>
+          <Text style={styles.loginText}>LOGIN</Text>
+        </TouchableOpacity>
+      </View>
 
       <TouchableOpacity onPress={() => router.push("/register")}>
         <Text style={styles.register}>
@@ -64,65 +67,59 @@ const styles = StyleSheet.create({
 
   container:{
     flex:1,
-    backgroundColor:Colors.background,
-    justifyContent:"center",
-    padding:30
+    backgroundColor:Colors.background
   },
 
   logo:{
     alignItems:"center",
-    marginBottom:60
+    paddingTop:60,
+    paddingBottom:12
   },
 
-  logoIcon:{
-    fontSize:60
+  logoImage:{
+    width:140,
+    height:140
   },
 
   title:{
-    fontSize:34,
-    fontWeight:"bold",
-    color:Colors.text,
-    marginTop:10
+    fontSize:26,
+    fontWeight:"800",
+    color:Colors.primary,
+    marginTop:8,
+    letterSpacing:1
   },
 
-  subtitle:{
-    color:Colors.textSecondary,
-    marginTop:6
-  },
-
-  label:{
-    fontWeight:"600",
-    marginBottom:8,
-    color:Colors.text
+  formSection:{
+    paddingHorizontal:24
   },
 
   input:{
-    backgroundColor:Colors.card,
-    color:Colors.text,
-    borderRadius:12,
-    padding:15,
-    marginBottom:20,
     borderWidth:1,
-    borderColor:Colors.border
+    borderColor:Colors.border,
+    borderRadius:10,
+    padding:12,
+    marginBottom:12,
+    backgroundColor:Colors.card,
+    color:Colors.text
   },
 
   loginButton:{
     backgroundColor:Colors.primary,
-    padding:16,
-    borderRadius:12,
+    padding:14,
+    borderRadius:10,
     alignItems:"center",
-    marginTop:10
+    marginTop:4
   },
 
   loginText:{
     color:Colors.text,
-    fontWeight:"bold",
+    fontWeight:"700",
     fontSize:16
   },
 
   register:{
     textAlign:"center",
-    marginTop:25,
+    paddingVertical:20,
     color:Colors.primary
   }
 

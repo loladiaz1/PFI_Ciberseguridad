@@ -1,9 +1,7 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 
-import { Header } from '../components/Header';
-import { BrandHeader } from '../components/ui/BrandHeader';
 import { signUp } from '../services/auth';
 import Colors from "../styles/colors";
 
@@ -20,13 +18,50 @@ export default function RegisterScreen() {
 
   return (
     <View style={styles.container}>
-      <BrandHeader />
-      <Header title="Create account" subtitle="Join your security team" />
-      <TextInput style={styles.input} placeholder="Name" value={name} onChangeText={setName} />
-      <TextInput style={styles.input} placeholder="Email" value={email} onChangeText={setEmail} />
-      <TextInput style={styles.input} placeholder="Password" secureTextEntry value={password} onChangeText={setPassword} />
-      <Pressable style={styles.button} onPress={handleRegister}>
-        <Text style={styles.buttonText}>Register</Text>
+      {/* Logo + nombre */}
+      <View style={styles.logoSection}>
+        <Image
+          source={require('../assets/images/logo.png')}
+          style={styles.logo}
+          resizeMode="contain"
+        />
+        <Text style={styles.appName}>FORTIA</Text>
+      </View>
+
+      {/* Formulario */}
+      <View style={styles.formSection}>
+        <TextInput
+          style={styles.input}
+          placeholder="Name"
+          placeholderTextColor={Colors.border}
+          value={name}
+          onChangeText={setName}
+        />
+        <TextInput
+          style={styles.input}
+          placeholder="Email"
+          placeholderTextColor={Colors.border}
+          value={email}
+          onChangeText={setEmail}
+          autoCapitalize="none"
+          keyboardType="email-address"
+        />
+        <TextInput
+          style={styles.input}
+          placeholder="Password"
+          placeholderTextColor={Colors.border}
+          secureTextEntry
+          value={password}
+          onChangeText={setPassword}
+        />
+        <Pressable style={styles.button} onPress={handleRegister}>
+          <Text style={styles.buttonText}>Register</Text>
+        </Pressable>
+      </View>
+
+      {/* Mensaje inferior en naranja */}
+      <Pressable style={styles.loginLinkWrapper} onPress={() => router.replace('/')}>
+        <Text style={styles.loginLink}>Already have an account? Log in</Text>
       </Pressable>
     </View>
   );
@@ -35,9 +70,30 @@ export default function RegisterScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 24,
-    justifyContent: "center",
     backgroundColor: Colors.background,
+  },
+
+  logoSection: {
+    alignItems: 'center',
+    paddingTop: 60,
+    paddingBottom: 12,
+  },
+
+  logo: {
+    width: 140,
+    height: 140,
+  },
+
+  appName: {
+    marginTop: 8,
+    fontSize: 26,
+    fontWeight: '800',
+    color: Colors.primary,
+    letterSpacing: 1,
+  },
+
+  formSection: {
+    paddingHorizontal: 24,
   },
 
   input: {
@@ -54,11 +110,23 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary,
     padding: 14,
     borderRadius: 10,
-    alignItems: "center",
+    alignItems: 'center',
+    marginTop: 4,
   },
 
   buttonText: {
     color: Colors.text,
-    fontWeight: "700",
+    fontWeight: '700',
+  },
+
+  loginLinkWrapper: {
+    paddingVertical: 20,
+    alignItems: 'center',
+  },
+
+  loginLink: {
+    color: '#FF8C00',
+    fontWeight: '600',
+    fontSize: 14,
   },
 });
