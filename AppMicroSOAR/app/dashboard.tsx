@@ -48,7 +48,9 @@ return(
 
 <ScrollView>
 
+<View style={styles.headerBar}>
 <BrandHeader />
+</View>
 
 <Text style={styles.greeting}>
 Good Evening
@@ -208,6 +210,11 @@ container:{
 flex:1,
 backgroundColor:Colors.background,
 paddingTop:60
+},
+
+headerBar:{
+paddingHorizontal:20,
+marginBottom:10
 },
 
 greeting:{

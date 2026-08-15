@@ -28,15 +28,16 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     alignSelf: "flex-start",
-    marginLeft: -12,
-    marginBottom: 15,
+    marginTop: -10,
+    marginLeft: -24,
+    marginBottom: 8,
   },
 
   brandName: {
-    fontSize: 34,
+    fontSize: 22,
     fontWeight: "bold",
     color: Colors.primary,
-    marginLeft: 4,
+    marginLeft: -18,
   },
 
   brandNameRoboto: {

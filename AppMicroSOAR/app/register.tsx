@@ -55,7 +55,7 @@ export default function RegisterScreen() {
           onChangeText={setPassword}
         />
         <Pressable style={styles.button} onPress={handleRegister}>
-          <Text style={styles.buttonText}>Register</Text>
+          <Text style={styles.buttonText}>REGISTER</Text>
         </Pressable>
       </View>
 
