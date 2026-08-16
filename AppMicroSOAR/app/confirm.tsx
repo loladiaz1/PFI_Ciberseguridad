@@ -38,7 +38,12 @@ export default function ConfirmScreen() {
 
       <TouchableOpacity
         style={styles.button}
-        onPress={() => router.push("/loading")}
+        onPress={() =>
+          router.push({
+            pathname: "/biometric",
+            params: { redirect: "/loading", fallback: "/confirm" },
+          })
+        }
       >
         <Text style={styles.buttonText}>
           BLOCK IP

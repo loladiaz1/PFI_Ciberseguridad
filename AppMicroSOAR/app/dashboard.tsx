@@ -49,7 +49,7 @@ return(
 <ScrollView>
 
 <View style={styles.headerBar}>
-<BrandHeader />
+<BrandHeader logoSize={64} />
 </View>
 
 <Text style={styles.greeting}>
@@ -209,12 +209,12 @@ const styles=StyleSheet.create({
 container:{
 flex:1,
 backgroundColor:Colors.background,
-paddingTop:60
+paddingTop:50
 },
 
 headerBar:{
 paddingHorizontal:20,
-marginBottom:10
+marginBottom:0
 },
 
 greeting:{

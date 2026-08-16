@@ -37,7 +37,7 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: "bold",
     color: Colors.primary,
-    marginLeft: -18,
+    marginLeft: 4,
   },
 
   brandNameRoboto: {
