@@ -10,12 +10,11 @@ import { router } from "expo-router";
 import { useCallback, useState } from "react";
 import { useFocusEffect } from "@react-navigation/native";
 
-import Colors from "../styles/colors";
-import BottomNav from "../components/BottomNav";
-import { BrandLogo } from "../components/BrandLogo";
-import { getIncidents } from "../services/api";
-import { severityLabel } from "../utils/severity";
-import type { Incident } from "../types";
+import Colors from "@/styles/colors";
+import { BrandLogo } from "@/components/BrandLogo";
+import { getIncidents } from "@/services/api";
+import { severityLabel } from "@/utils/severity";
+import type { Incident } from "@/types";
 
 export default function Dashboard(){
 
@@ -196,8 +195,6 @@ onPress={()=>router.push({ pathname: "/incident", params: { id: String(item.id) 
 }
 
 </ScrollView>
-
-<BottomNav/>
 
 </View>
 

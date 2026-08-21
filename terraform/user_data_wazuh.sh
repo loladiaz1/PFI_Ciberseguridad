@@ -9,7 +9,10 @@ echo 'ubuntu ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/99-ubuntu-nopasswd
 chmod 440 /etc/sudoers.d/99-ubuntu-nopasswd
 
 cd /root
-curl -sO https://packages.wazuh.com/4.x/wazuh-install.sh
+# "4.x" en la doc de Wazuh es un placeholder de version, no una URL real -- hay
+# que fijar major.minor. Debe coincidir con el major.minor de var.wazuh_agent_version
+# (variables.tf) o el agente de la victima no puede enrolarse (version mismatch).
+curl -sO https://packages.wazuh.com/4.8/wazuh-install.sh
 
 # -a : all-in-one single-node install
 # -i : ignore hardware/OS pre-checks (t3.medium's 4 GB is at the edge of the RAM check)

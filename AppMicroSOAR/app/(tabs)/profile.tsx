@@ -1,10 +1,9 @@
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import BottomNav from '../components/BottomNav';
-import { BrandLogo } from '../components/BrandLogo';
-import { Header } from '../components/Header';
-import { userSeed } from '../data/user';
-import Colors from "../styles/colors";
+import { BrandLogo } from '@/components/BrandLogo';
+import { Header } from '@/components/Header';
+import { userSeed } from '@/data/user';
+import Colors from "@/styles/colors";
 
 export default function ProfileScreen() {
   return (
@@ -21,7 +20,6 @@ export default function ProfileScreen() {
           <Text style={styles.value}>{userSeed.role}</Text>
         </View>
       </ScrollView>
-      <BottomNav />
     </View>
   );
 }

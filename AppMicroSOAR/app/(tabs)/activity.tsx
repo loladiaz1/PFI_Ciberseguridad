@@ -1,12 +1,9 @@
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import BottomNav from '../components/BottomNav';
-import { BrandLogo } from '../components/BrandLogo';
-import { Header } from '../components/Header';
-import { activitySeed } from '../data/activity';
-import Colors from "../styles/colors";
-
-const BottomNavComponent = BottomNav as any;
+import { BrandLogo } from '@/components/BrandLogo';
+import { Header } from '@/components/Header';
+import { activitySeed } from '@/data/activity';
+import Colors from "@/styles/colors";
 
 export default function ActivityScreen() {
   return (
@@ -23,7 +20,6 @@ export default function ActivityScreen() {
           </View>
         ))}
       </ScrollView>
-      <BottomNavComponent active="activity" />
     </View>
   );
 }
