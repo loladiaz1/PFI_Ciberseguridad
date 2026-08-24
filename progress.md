@@ -52,11 +52,76 @@ _(Cambios de rumbo respecto al PLAN, con el motivo. Para defender ante el tribun
 | 2026-08-04 | Orchestrator migrado de Python/FastAPI a Node.js/Express + Prisma | El documento de propuesta (ya entregado/evaluado) especifica Node.js v18+, Express, Axios, JWT. Se había arrancado en Python por simplicidad del spike, pero al confirmar que el documento ya fue evaluado había que alinear la implementación. Se reescribió todo (Fase 0 y Fase 1) antes de sumar más código sobre la base equivocada. |
 | 2026-08-21 | Deadline de demo movido al 1 de septiembre de 2026 (el original de `PLAN.md` era el 18/08) | Entre el 06/08 y el 21/08 se corrió un `terraform destroy` que dejó la infra de AWS en cero, y nada de lo construido después (instancia dedicada del orchestrator, Tailscale, la app terminada) se había probado nunca contra infraestructura real hasta esta sesión. `PLAN.md` todavía no está actualizado con la fecha nueva. |
 | 2026-08-21 | La instancia del orchestrator no se destruye/recrea junto con Wazuh y la víctima — se para y prende (`stop`/`start`) | Su identidad de Tailscale (IP `100.x.y.z`) vive en el disco de la instancia; recrearla la cambia y obliga a actualizar `AppMicroSOAR/.env` y limpiar el dispositivo viejo del admin console. `stop`/`start` la preserva. Wazuh y la víctima sí se pueden destruir/recrear libremente (no dependen de Tailscale). |
+| 2026-08-24 | `origin/unificacion-backend-frontend` (Lola) se descarta entera, no se mergea nada — ni siquiera pulido visual archivo por archivo. `test1` queda como única base. | `git merge-tree` (dry run) dio 0 conflictos textuales, pero la branch reimplementó lo mismo de forma incompatible: backend MVC propio sin la integración real de Wazuh (`AppMicroSOAR/backend/orchestrator/`), otra reestructuración de rutas de expo-router, y borra `services/{http,tokenStore}.ts` que `test1` sí usa. Un merge automático hubiera dejado dos backends y dos routings coexistiendo sin error visible. Ajustes de diseño se hacen después, a mano, sobre `test1`. Pendiente: avisarle a Lola para que no siga sumando commits en esa branch. |
 
 ---
 
 ## Bitácora de sesiones
 _(La más reciente arriba. Formato fijo por entrada.)_
+
+### Sesión 2026-08-24 — Consolidar branches, descartar frontend de Lola, decisiones de tesis pendientes
+- **Objetivo de la sesión:** `main` seguía parado en "react native front" (06/08)
+  mientras todo lo real vivía en `test1`, y `test1` divergía hacía 3 semanas de
+  `unificacion-backend-frontend` (Lola) sin que nadie decidiera qué hacer.
+  Resolver antes de seguir sumando código.
+- **Hecho:**
+  - Confirmado que `origin/unificacion-backend-frontend` siguió avanzando en
+    paralelo sin loguear (`7660607` "cambio de diseño" 15/08, `41a42f3` "fix"
+    15/08, `a74e4f3` "face id" 16/08) — 3 commits más desde la última vez que
+    se había mirado.
+  - `git merge-tree` (dry run, sin tocar el repo) entre `test1` y esa branch:
+    **0 conflictos textuales**, pero engañoso — reimplementaron lo mismo de
+    forma incompatible en rutas distintas: `AppMicroSOAR/backend/orchestrator/`
+    (backend MVC propio, sin `wazuh.js`/`auth.js`/`custom-microsoar.py` reales),
+    otra reestructuración de expo-router (mueve `dashboard.tsx` fuera de
+    `(tabs)/`, distinto de como quedó en la sesión 21/08), y borra
+    `services/{http,tokenStore}.ts` que `test1` sí usa. Un merge automático
+    hubiera dejado dos backends y dos routings coexistiendo sin error visible.
+  - Revisado el commit `a74e4f3` ("face id") en detalle: agrega
+    `AppMicroSOAR/app/biometric.tsx`, pantalla de step-up genérica y reusable
+    (`redirect`/`fallback` por query param) que pide biometría **después** de
+    `/confirm`. No se adopta: depende de `components/ui/BrandHeader.tsx`, que
+    no existe en `test1` (viene de commits previos de esa branch, no
+    incluidos en el diff), y duplicaría el step-up — `test1` ya lo hace
+    **antes** de `/confirm` (`app/auth.tsx`, probado end-to-end el 21/08,
+    `DROP` real confirmado). El patrón genérico de `biometric.tsx` queda
+    anotado como mejor diseño a futuro, no para ahora.
+  - **Decisión: `unificacion-backend-frontend` se descarta entera, no se trae
+    nada** (ver tabla de decisiones). `test1` queda como única base.
+  - Confirmado que `main` es ancestro directo de `test1`
+    (`git merge-base --is-ancestor main test1` → sí) — el fast-forward
+    `main`←`test1` es trivial, sin riesgo de conflicto. **Instrucciones dadas,
+    push todavía no ejecutado** (queda para cuando el usuario lo corra).
+  - Encontrados sin loguear en su momento: `DIAGRAMAS.md` se actualizó el
+    16/08 (bloque Four-Eyes en el diagrama de secuencia, escala de alcance
+    🔴 checkpoint garantizado / ⚪ candidato si sobra tiempo / 🔵 producto
+    final, nota de que el 18/08 es checkpoint intermedio, no entrega final);
+    y aparecieron en el repo `E25-PFI-Diaz-Perversi-MICRO-SOAR.pdf` (la
+    propuesta real, antes no estaba en el repo) y `TESIS_CAPITULOS.md`, que
+    cruza la propuesta contra el código y deja marcadas dos discrepancias sin
+    resolver: **(1) stack** — la propuesta pide Android nativo Kotlin +
+    Jetpack Compose, el código es Expo/React Native, sin justificar todavía
+    (mismo tipo de tensión que se resolvió una vez para el backend,
+    Python→Node, pero en sentido inverso); **(2) alcance formal** — la
+    propuesta compromete 3 PoC (fuerza bruta + aislar endpoint CU-02 +
+    phishing CU-03), el plan actual cubre 1 solo, y CU-03 no tiene ninguna
+    Historia de Usuario que lo respalde. Ninguna de las dos es un problema de
+    código — son decisiones de equipo que bloquean escribir el capítulo 7 de
+    la tesis.
+- **En progreso / a medias:** fast-forward `main`←`test1` decidido, no
+  ejecutado todavía. Decisión de stack (Kotlin vs RN) y de alcance (1 vs 3
+  PoC) sin resolver, no bloquean el código de acá al 1/9 pero sí la
+  redacción de la tesis.
+- **Errores encontrados:** —
+- **Próximo paso concreto:** ejecutar el fast-forward y pushear `main`;
+  avisarle a Lola que su branch quedó descartada; después, conectar el
+  webhook real de Wazuh (sigue siendo el próximo paso técnico de la sesión
+  21/08, no cambió).
+- **Estado de instancias AWS:** sin cambios en esta sesión (no se tocó
+  infra) — seguían `stopped` desde el cierre del 21/08, confirmar antes de
+  la próxima prueba end-to-end.
+
+---
 
 ### Sesión 2026-08-21 — Recuperar la infra desde cero, deploy del orchestrator y primer end-to-end real desde el celular
 - **Objetivo de la sesión:** el demo se corrió al 1/9. Retomar después de casi
