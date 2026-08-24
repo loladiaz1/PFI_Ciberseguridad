@@ -2,6 +2,9 @@ const request = require("supertest");
 const mockAlert = require("../mocks/wazuh_ssh_bruteforce.json");
 const { app } = require("../src/app");
 const { prisma } = require("../src/db");
+const { login } = require("../src/auth");
+
+const token = login(process.env.AUTH_USER, process.env.AUTH_PASSWORD);
 
 afterAll(async () => {
   await prisma.$disconnect();
@@ -28,7 +31,7 @@ test("el webhook rechaza una alerta con campos faltantes", async () => {
 test("GET /incidents devuelve la alerta persistida", async () => {
   await request(app).post("/api/v1/webhook/wazuh").send(mockAlert);
 
-  const resp = await request(app).get("/api/v1/incidents");
+  const resp = await request(app).get("/api/v1/incidents").set("Authorization", `Bearer ${token}`);
 
   expect(resp.status).toBe(200);
   expect(resp.body.some((i) => i.srcIp === "203.0.113.55")).toBe(true);

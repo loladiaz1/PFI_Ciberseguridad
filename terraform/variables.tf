@@ -55,3 +55,22 @@ variable "wazuh_agent_version" {
   type        = string
   default     = "4.8.2"
 }
+
+variable "orchestrator_instance_type" {
+  description = "EC2 instance type for the orchestrator (Node/Express + Prisma). PLAN.md sugiere t3.small."
+  type        = string
+  default     = "t3.small"
+}
+
+variable "orchestrator_root_volume_gb" {
+  description = "Root EBS (gp3) volume size in GB for the orchestrator instance."
+  type        = number
+  default     = 20
+}
+
+variable "tailscale_authkey" {
+  description = "Auth key reusable de Tailscale (Settings -> Keys en el admin console) para que el orchestrator se una a la tailnet solo, sin 'tailscale up' manual. Vacio = queda pendiente por SSH."
+  type        = string
+  default     = ""
+  sensitive   = true
+}

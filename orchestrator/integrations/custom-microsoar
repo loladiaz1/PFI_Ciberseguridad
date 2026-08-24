@@ -1,0 +1,25 @@
+#!/bin/sh
+# Wrapper que Wazuh (analysisd) invoca para la integracion custom-microsoar.
+# Sigue el patron estandar de los ejemplos oficiales (custom-slack, etc.):
+# resuelve la ruta de instalacion y delega en el script Python real.
+WPYTHON_BIN="framework/python/bin/python3"
+
+SCRIPT_PATH_NAME="$0"
+DIR_NAME="$(cd $(dirname ${SCRIPT_PATH_NAME}); pwd -P)"
+SCRIPT_NAME="$(basename ${SCRIPT_PATH_NAME})"
+
+case ${DIR_NAME} in
+    */active-response/bin | */wodles*)
+        if [ -z "${WAZUH_PATH}" ]; then
+            WAZUH_PATH="/var/ossec"
+        fi
+    ;;
+    */bin | */integrations)
+        WAZUH_PATH=$(cd ${DIR_NAME}/..; pwd)
+    ;;
+esac
+
+WPYTHON_BIN="${WAZUH_PATH}/framework/python/bin/python3"
+export PYTHONPATH="${WAZUH_PATH}/framework:${PYTHONPATH}"
+
+${WPYTHON_BIN} ${DIR_NAME}/${SCRIPT_NAME}.py $@

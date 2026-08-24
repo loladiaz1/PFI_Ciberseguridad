@@ -1,9 +1,36 @@
 import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
+import { useState } from "react";
+import * as LocalAuthentication from "expo-local-authentication";
 import Colors from "../styles/colors";
 import BottomNav from "@/components/BottomNav";
 
 export default function AuthScreen(){
+
+const { id } = useLocalSearchParams<{ id: string }>();
+const [error, setError] = useState("");
+
+const authenticate = async () => {
+    setError("");
+
+    const hasHardware = await LocalAuthentication.hasHardwareAsync();
+    const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+
+    if (!hasHardware || !isEnrolled) {
+        setError("No biometrics enrolled on this device. Set up Face ID / Fingerprint to continue.");
+        return;
+    }
+
+    const result = await LocalAuthentication.authenticateAsync({
+        promptMessage: "Confirm it's you to block this IP",
+    });
+
+    if (result.success) {
+        router.push({ pathname: "/confirm", params: { id } });
+    } else if (result.error !== "user_cancel") {
+        setError("Authentication failed. Try again.");
+    }
+};
 
 return(
 
@@ -24,13 +51,15 @@ to continue.
 👆
 </Text>
 
+{error ? <Text style={styles.error}>{error}</Text> : null}
+
 <TouchableOpacity
 style={styles.button}
-onPress={()=>router.push("/loading")}
+onPress={authenticate}
 >
 
 <Text style={styles.buttonText}>
-Simulate Authentication
+Authenticate
 </Text>
 
 </TouchableOpacity>
@@ -73,6 +102,12 @@ const styles = StyleSheet.create({
   fingerprint:{
     fontSize:90,
     marginVertical:45
+  },
+
+  error:{
+    color:Colors.danger,
+    textAlign:"center",
+    marginBottom:20
   },
 
   button:{

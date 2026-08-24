@@ -1,11 +1,32 @@
-import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
-import { router } from "expo-router";
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from "react-native";
+import { router, useLocalSearchParams } from "expo-router";
+import { useEffect, useState } from "react";
 import Colors from "../styles/colors";
 import BottomNav from "../components/BottomNav";
 import { BrandLogo } from "../components/BrandLogo";
-
+import { getIncidentById } from "../services/api";
+import { severityLabel } from "../utils/severity";
+import type { Incident } from "../types";
 
 export default function ConfirmScreen() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const [incident, setIncident] = useState<Incident | null>(null);
+
+  useEffect(() => {
+    if (!id) return;
+    getIncidentById(Number(id)).then(({ data }) => setIncident(data ?? null));
+  }, [id]);
+
+  if (!incident) {
+    return (
+      <View style={[styles.container, styles.centered]}>
+        <ActivityIndicator size="large" />
+      </View>
+    );
+  }
+
+  const severity = severityLabel(incident.severity);
+
   return (
     <View style={styles.container}>
       <BrandLogo showText={false} />
@@ -22,13 +43,13 @@ export default function ConfirmScreen() {
       <View style={styles.card}>
 
         <Text style={styles.label}>Attacker IP</Text>
-        <Text style={styles.value}>185.220.101.55</Text>
+        <Text style={styles.value}>{incident.srcIp}</Text>
 
         <Text style={styles.label}>Target</Text>
-        <Text style={styles.value}>SERVER-02</Text>
+        <Text style={styles.value}>{incident.hostname}</Text>
 
         <Text style={styles.label}>Severity</Text>
-        <Text style={styles.critical}>CRITICAL</Text>
+        <Text style={[styles.critical, { color: severity.color }]}>{severity.label}</Text>
 
       </View>
 
@@ -38,7 +59,10 @@ export default function ConfirmScreen() {
 
       <TouchableOpacity
         style={styles.button}
-        onPress={() => router.push("/loading")}
+        onPress={() => router.push({
+          pathname: "/loading",
+          params: { id: String(incident.id), srcIp: incident.srcIp, hostname: incident.hostname },
+        })}
       >
         <Text style={styles.buttonText}>
           BLOCK IP
@@ -65,6 +89,10 @@ const styles = StyleSheet.create({
     backgroundColor:Colors.background,
     justifyContent:"center",
     padding:25
+  },
+
+  centered:{
+    alignItems:"center",
   },
 
   icon:{
@@ -109,7 +137,6 @@ const styles = StyleSheet.create({
   },
 
   critical:{
-    color:Colors.danger,
     fontSize:18,
     fontWeight:"bold",
     marginTop:5

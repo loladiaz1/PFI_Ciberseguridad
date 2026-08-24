@@ -7,40 +7,36 @@ import {
 } from "react-native";
 
 import { router } from "expo-router";
+import { useCallback, useState } from "react";
+import { useFocusEffect } from "@react-navigation/native";
 
-import Colors from "../styles/colors";
-import BottomNav from "../components/BottomNav";
-import { BrandLogo } from "../components/BrandLogo";
-
-const recent = [
-
-{
-id:1,
-title:"SSH Brute Force",
-server:"SERVER-02",
-severity:"Critical",
-color:Colors.danger
-},
-
-{
-id:2,
-title:"Malicious IP",
-server:"SERVER-05",
-severity:"High",
-color:Colors.primary
-},
-
-{
-id:3,
-title:"Port Scan",
-server:"SERVER-08",
-severity:"Medium",
-color:Colors.warning
-}
-
-];
+import Colors from "@/styles/colors";
+import { BrandLogo } from "@/components/BrandLogo";
+import { getIncidents } from "@/services/api";
+import { severityLabel } from "@/utils/severity";
+import type { Incident } from "@/types";
 
 export default function Dashboard(){
+
+const [incidents, setIncidents] = useState<Incident[]>([]);
+
+useFocusEffect(
+    useCallback(() => {
+        let cancelled = false;
+        getIncidents()
+            .then(({ data }) => {
+                if (!cancelled) setIncidents(data);
+            })
+            .catch(() => {});
+        return () => {
+            cancelled = true;
+        };
+    }, [])
+);
+
+const recent = incidents.slice(0, 3);
+const openCount = incidents.filter((i) => i.status === "new").length;
+const blockedCount = incidents.filter((i) => i.status === "blocked").length;
 
 return(
 
@@ -79,7 +75,7 @@ Threat Level
 <View style={styles.smallCard}>
 
 <Text style={styles.number}>
-4
+{openCount}
 </Text>
 
 <Text style={styles.label}>
@@ -91,7 +87,7 @@ Incidents
 <View style={styles.smallCard}>
 
 <Text style={styles.number}>
-18
+{blockedCount}
 </Text>
 
 <Text style={styles.label}>
@@ -150,7 +146,11 @@ View all
 
 {
 
-recent.map(item=>(
+recent.map(item=>{
+
+const severity = severityLabel(item.severity);
+
+return (
 
 <TouchableOpacity
 
@@ -158,7 +158,7 @@ key={item.id}
 
 style={styles.incident}
 
-onPress={()=>router.push("/incident")}
+onPress={()=>router.push({ pathname: "/incident", params: { id: String(item.id) } })}
 
 >
 
@@ -166,13 +166,13 @@ onPress={()=>router.push("/incident")}
 
 <Text style={styles.incidentTitle}>
 
-{item.title}
+{item.hostname}
 
 </Text>
 
 <Text style={styles.server}>
 
-{item.server}
+{item.srcIp}
 
 </Text>
 
@@ -180,21 +180,21 @@ onPress={()=>router.push("/incident")}
 
 <View>
 
-<Text style={[styles.badge,{backgroundColor:item.color}]}>
-{item.severity}
+<Text style={[styles.badge,{backgroundColor:severity.color}]}>
+{severity.label}
 </Text>
 
 </View>
 
 </TouchableOpacity>
 
-))
+);
+
+})
 
 }
 
 </ScrollView>
-
-<BottomNav/>
 
 </View>
 
