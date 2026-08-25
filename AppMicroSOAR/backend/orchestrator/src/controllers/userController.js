@@ -1,49 +1,106 @@
-let users = [
-  {
-    id: "1",
-    name: "Admin",
-    email: "admin@fortia.com",
-    role: "ADMIN",
-    avatarUrl: null,
-  },
-];
+const { prisma } = require("../db");
 
-const getUsers = (req, res) => {
-  res.json(users);
+const getUsers = async (req, res, next) => {
+  try {
+    const users = await prisma.user.findMany({
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        avatarUrl: true,
+        createdAt: true,
+      },
+    });
+
+    res.json(users);
+  } catch (error) {
+    next(error);
+  }
 };
 
-const getUserById = (req, res) => {
-  const user = users.find((user) => user.id === req.params.id);
-
-  if (!user) {
-    return res.status(404).json({
-      message: "User not found",
+const getUserById = async (req, res, next) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: {
+        id: Number(req.params.id),
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        avatarUrl: true,
+        createdAt: true,
+      },
     });
-  }
 
-  res.json(user);
+    if (!user) {
+      return res.status(404).json({
+        message: "User not found",
+      });
+    }
+
+    res.json(user);
+  } catch (error) {
+    next(error);
+  }
 };
 
-const createUser = (req, res) => {
-  const { name, email, role, avatarUrl } = req.body;
+const createUser = async (req, res, next) => {
+  try {
+    const {
+      name,
+      email,
+      password,
+      role,
+      avatarUrl,
+    } = req.body;
 
-  if (!name || !email || !role) {
-    return res.status(400).json({
-      message: "name, email and role are required",
+    if (!name || !email || !password) {
+      return res.status(400).json({
+        message: "name, email and password are required",
+      });
+    }
+
+    const bcrypt = require("bcryptjs");
+
+    const existingUser = await prisma.user.findUnique({
+      where: {
+        email,
+      },
     });
+
+    if (existingUser) {
+      return res.status(409).json({
+        message: "Email already registered",
+      });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const user = await prisma.user.create({
+      data: {
+        name,
+        email,
+        password: hashedPassword,
+        role: role || "OPERATOR",
+        avatarUrl: avatarUrl || null,
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        avatarUrl: true,
+        createdAt: true,
+      },
+    });
+
+    res.status(201).json(user);
+  } catch (error) {
+    next(error);
   }
-
-  const newUser = {
-    id: String(users.length + 1),
-    name,
-    email,
-    role,
-    avatarUrl: avatarUrl ?? null,
-  };
-
-  users.push(newUser);
-
-  res.status(201).json(newUser);
 };
 
 module.exports = {
