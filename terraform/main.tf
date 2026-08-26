@@ -118,6 +118,14 @@ resource "aws_instance" "wazuh" {
   # Only runs the installer when install_wazuh = true; otherwise a bare instance.
   user_data = var.install_wazuh ? file("${path.module}/user_data_wazuh.sh") : null
 
+  # associate_public_ip_address solo aplica al lanzar la instancia. Con la
+  # instancia "stopped" (sin IP publica en ese momento), la API de AWS lo
+  # devuelve como false, Terraform lo compara contra el "true" de arriba y
+  # fuerza un replace innecesario -- falso positivo, no un cambio real.
+  lifecycle {
+    ignore_changes = [associate_public_ip_address]
+  }
+
   tags = {
     Name = "micro-soar-wazuh"
     Role = "wazuh-xdr"
@@ -184,6 +192,11 @@ resource "aws_instance" "victim" {
     systemctl start wazuh-agent
   EOT
 
+  # Ver comentario equivalente en aws_instance.wazuh.
+  lifecycle {
+    ignore_changes = [associate_public_ip_address]
+  }
+
   tags = {
     Name = "micro-soar-victim"
     Role = "brute-force-target"
@@ -207,6 +220,21 @@ resource "aws_security_group" "orchestrator" {
     to_port     = 22
     protocol    = "tcp"
     cidr_blocks = [var.my_ip]
+  }
+
+  # El manager de Wazuh no esta en la tailnet (solo el celular y el
+  # orchestrator lo estan) -- necesita esta via interna por VPC para poder
+  # llamar al webhook. No reabre nada a internet: sigue sin haber ninguna
+  # regla que permita el puerto 8000 desde 0.0.0.0/0 ni desde var.my_ip.
+  # CIDR de la VPC en vez de referenciar el SG de Wazuh: una referencia
+  # cruzada por security_groups entre wazuh <-> orchestrator crea un ciclo
+  # de dependencias (ambos SG tienen bloques ingress inline).
+  ingress {
+    description = "Webhook desde instancias de la VPC (integracion custom-microsoar de Wazuh)"
+    from_port   = 8000
+    to_port     = 8000
+    protocol    = "tcp"
+    cidr_blocks = [data.aws_vpc.default.cidr_block]
   }
 
   egress {
@@ -256,6 +284,13 @@ resource "aws_instance" "orchestrator" {
       echo "tailscale_authkey no seteado -- correr 'sudo tailscale up' a mano por SSH." | tee /home/ubuntu/TAILSCALE_PENDING.txt
     fi
   EOT
+
+  # Ver comentario equivalente en aws_instance.wazuh. Doblemente importante
+  # aca: un replace de esta instancia pierde la identidad de Tailscale y el
+  # deploy manual del codigo.
+  lifecycle {
+    ignore_changes = [associate_public_ip_address]
+  }
 
   tags = {
     Name = "micro-soar-orchestrator"

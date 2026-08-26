@@ -15,7 +15,7 @@ _(Actualizar el estado; el detalle va en las entradas de sesión de abajo.)_
 | Fase | Estado | Nota breve |
 |---|---|---|
 | Fase 0 — Spike de riesgo (bloqueo vía API Wazuh) | ✅ Listo | Revalidado el 21/08 contra infra recreada de cero (ver sesión). El eslabón crítico sigue funcionando. |
-| Fase 1 — Camino feliz backend | 🟡 En progreso | Webhook + normalización + persistencia + `GET /incidents` deployados y corriendo en AWS (`pm2`), validados end-to-end. Falta conectar el webhook a alertas reales de Wazuh (`ossec.conf` + `custom-microsoar`) — hoy se sigue inyectando el incidente a mano vía `curl`. |
+| Fase 1 — Camino feliz backend | ✅ Listo | Webhook conectado a Wazuh real (`ossec.conf` + `integrations/custom-microsoar`). Un brute-force SSH real crea el incidente solo, sin inyección manual — confirmado el 26/08. |
 | Fase 2 — App consumiendo | ✅ Listo | Login, lista, detalle y bloqueo probados de punta a punta desde un celular real, por Tailscale, contra el orchestrator en AWS. |
 | Fase 3 — Step-up + enriquecimiento | 🟡 En progreso | Step-up con biometría real (`expo-local-authentication`) probado y funcionando. Falta enriquecimiento VT/AbuseIPDB y audit log (`activity.tsx` sigue con datos mock). |
 | Fase 4 — Hardening y ensayo | 🟡 En progreso | Security group del orchestrator confirmado cerrado (puerto 8000 solo por Tailscale, no por IP pública). Falta: video de respaldo, ensayo cronometrado. |
@@ -39,6 +39,10 @@ _(Antes de reintentar algo, revisar esta sección. No repetir fallas.)_
 | 2026-08-21 | `rsync` para copiar `orchestrator/` a la instancia del orchestrator, desde PowerShell y desde Git Bash en Windows | No está instalado en ninguno de los dos. | Empaquetar con `tar --exclude=node_modules --exclude=.env`, subir con `scp`, extraer con `tar -xzf` del lado del servidor. |
 | 2026-08-21 | Copiar `orchestrator/soar.db` tal cual (dentro del `tar` de deploy) y despues limpiarlo con `rm soar.db` en la raíz del proyecto en el servidor | Prisma resuelve `file:./soar.db` (de `DATABASE_URL` en `.env`) relativo a la carpeta de `prisma/schema.prisma`, no a la raíz del proyecto — el archivo real vivía en `orchestrator/prisma/soar.db`. El primer intento de limpieza borraba un archivo que no era el real; encima quedaban `-wal`/`-shm` que hacían "reaparecer" los datos viejos al recrear el `.db` principal. | Al limpiar una SQLite de Prisma: borrar `prisma/*.db*` (no solo `*.db` en la raíz del proyecto), incluyendo `-journal`/`-wal`/`-shm`, y excluir `soar.db` del `tar` de deploy en el futuro (junto con `.env`). |
 | 2026-08-21 | `BottomNav` cambiaba de "pestaña" con `router.push()` sobre un `Stack` navigator (no un `Tabs`) | `push` apila una pantalla nueva cada vez en vez de cambiar entre pestañas existentes: cada tap remontaba la pantalla entera y volvía a pedir los datos a la API — se sentía como si recargara toda la app. | `dashboard`, `incidents`, `activity`, `profile` movidos a `app/(tabs)/` con un `Tabs` real de expo-router + `components/TabBar.tsx` custom que usa `navigation.navigate()`. De paso se encontró que `app/(tabs)/index.tsx` (boilerplate de Expo sin usar) pisaba la misma ruta `/` que el login — se borró junto con `explore.tsx`. |
+| 2026-08-26 | Agregar ingress al SG del orchestrator referenciando `aws_security_group.wazuh.id` (para que el manager le llegue al webhook) | `Error: Cycle` — el SG de Wazuh ya referenciaba al del orchestrator (regla del puerto 55000), y ambos usan bloques `ingress` inline: una referencia cruzada entre dos SG con reglas inline en ambos lados es un ciclo que Terraform no puede resolver. | Usar `cidr_blocks = [data.aws_vpc.default.cidr_block]` en vez de `security_groups = [...]` para esa regla puntual — evita el ciclo sin tocar las reglas que ya funcionaban (convertir la regla existente a `aws_security_group_rule` standalone hubiera reintroducido el bug ya documentado arriba, del 04/08, de reglas standalone mezcladas con bloques inline en el mismo SG). |
+| 2026-08-26 | `terraform plan` con las 3 instancias `stopped`, después de un cambio no relacionado (el SG del punto anterior) | El plan quería **reemplazar las 3 instancias** (`associate_public_ip_address = false -> true # forces replacement`) — casi se aplica sin mirar el detalle. | `associate_public_ip_address` solo aplica al lanzar la instancia; con la instancia parada (sin IP pública en ese momento), la API de AWS lo devuelve `false` y Terraform lo interpreta como drift real. Se agregó `lifecycle { ignore_changes = [associate_public_ip_address] }` a las 3 `aws_instance` — fix permanente, si no iba a repetirse cada vez que se toque Terraform con las instancias paradas (que es el hábito de ahorro de costo del equipo). |
+| 2026-08-26 | Subir `orchestrator/integrations/custom-microsoar` y `.py` al manager (`scp` + `chown root:wazuh` + `chmod 750`, mismo patrón que `slack`/`pagerduty` ya instalados) | `wazuh-integratord: ERROR: Couldn't execute command (...). Check file and permissions.` — mensaje genérico, no decía la causa real. | Los dos archivos tenían fin de línea CRLF (Windows) en el repo. El shebang quedaba `#!/bin/sh\r`, un intérprete que no existe — el kernel no puede hacer `exec()`. Confirmado con `cat -A`. Corregido con `sed -i 's/\r$//'` en ambos archivos, y agregado `.gitattributes` (`orchestrator/integrations/* text eol=lf`, `*.sh text eol=lf`) para que no vuelva a pasar en un checkout futuro en Windows. |
+| 2026-08-26 | Primer intento de brute-force real (loop de `ssh` con `PubkeyAuthentication=no` contra la víctima) para probar la integración | La regla compuesta de fuerza bruta de Wazuh (`5712`, nivel 10) nunca disparó — la app nunca vio el incidente. | La AMI de Ubuntu deshabilita `PasswordAuthentication` por default (`/etc/ssh/sshd_config.d/60-cloudimg-settings.conf`). Sin eso, sshd cierra la conexión en preauth sin generar líneas `Failed password`, que es lo que necesita la regla `5712` (`frequency=8` de la regla `5710` en 120s, confirmado leyendo `/var/ossec/ruleset/rules/0095-sshd_rules.xml` directo en el manager). Se habilitó `PasswordAuthentication yes` en la víctima — seguro porque `ubuntu` no tiene ninguna password real seteada, nadie puede entrar de verdad igual. Es la víctima dedicada al brute-force del propio PLAN.md, tiene sentido que acepte el ataque. |
 
 ---
 
@@ -53,11 +57,81 @@ _(Cambios de rumbo respecto al PLAN, con el motivo. Para defender ante el tribun
 | 2026-08-21 | Deadline de demo movido al 1 de septiembre de 2026 (el original de `PLAN.md` era el 18/08) | Entre el 06/08 y el 21/08 se corrió un `terraform destroy` que dejó la infra de AWS en cero, y nada de lo construido después (instancia dedicada del orchestrator, Tailscale, la app terminada) se había probado nunca contra infraestructura real hasta esta sesión. `PLAN.md` todavía no está actualizado con la fecha nueva. |
 | 2026-08-21 | La instancia del orchestrator no se destruye/recrea junto con Wazuh y la víctima — se para y prende (`stop`/`start`) | Su identidad de Tailscale (IP `100.x.y.z`) vive en el disco de la instancia; recrearla la cambia y obliga a actualizar `AppMicroSOAR/.env` y limpiar el dispositivo viejo del admin console. `stop`/`start` la preserva. Wazuh y la víctima sí se pueden destruir/recrear libremente (no dependen de Tailscale). |
 | 2026-08-24 | `origin/unificacion-backend-frontend` (Lola) se descarta entera, no se mergea nada — ni siquiera pulido visual archivo por archivo. `test1` queda como única base. | `git merge-tree` (dry run) dio 0 conflictos textuales, pero la branch reimplementó lo mismo de forma incompatible: backend MVC propio sin la integración real de Wazuh (`AppMicroSOAR/backend/orchestrator/`), otra reestructuración de rutas de expo-router, y borra `services/{http,tokenStore}.ts` que `test1` sí usa. Un merge automático hubiera dejado dos backends y dos routings coexistiendo sin error visible. Ajustes de diseño se hacen después, a mano, sobre `test1`. Pendiente: avisarle a Lola para que no siga sumando commits en esa branch. |
+| 2026-08-26 | `PasswordAuthentication yes` habilitado en la víctima, en contra del hardening por default de la AMI | El PLAN.md asume un atacante que hace fuerza bruta de passwords (hydra o loop de `ssh`) contra esta VM específicamente dedicada a ese rol — sin login por password, Wazuh nunca ve `Failed password` y la regla de brute-force no dispara. Queda así para la demo (no es un fix temporal a revertir). Ver tabla de errores para el detalle de por qué hacía falta. |
 
 ---
 
 ## Bitácora de sesiones
 _(La más reciente arriba. Formato fijo por entrada.)_
+
+### Sesión 2026-08-26 — Webhook real de Wazuh conectado, primera detección automática end-to-end
+- **Objetivo de la sesión:** cerrar el único pendiente real de la Fase 1 —
+  que un brute-force SSH real cree el incidente solo, sin que alguien lo
+  empuje a mano con `curl` (así venía quedando desde la sesión del 21/08).
+- **Hecho:**
+  - Detectado un hueco de arquitectura antes de tocar Wazuh: el security
+    group del orchestrator no tenía **ninguna** regla para el puerto 8000,
+    ni siquiera desde la VPC. El celular entra por Tailscale (no pasa por
+    el SG), pero el manager de Wazuh no está en la tailnet — necesitaba una
+    vía interna. Se agregó una regla de ingreso acotada al CIDR de la VPC
+    (no a `0.0.0.0/0`, el puerto sigue sin estar expuesto a internet).
+  - Esa regla, si se referenciaba por `security_groups` al SG de Wazuh,
+    generaba un ciclo de dependencias con la regla ya existente en sentido
+    inverso (puerto 55000). Resuelto usando el CIDR de la VPC en vez de la
+    referencia cruzada (ver tabla de errores).
+  - **Casi se pierde todo el trabajo del 21/08:** al aplicar ese cambio de
+    security group con las 3 instancias `stopped`, el plan de Terraform
+    mostraba que iba a **reemplazar las 3 instancias** por un falso
+    positivo de `associate_public_ip_address` (ver tabla de errores).
+    Detectado antes de aplicar. Fix permanente con `lifecycle` en las 3
+    instancias — sin esto, iba a volver a pasar cada vez que se tocara
+    Terraform con las instancias paradas.
+  - Aplicado sin destruir nada (`0 destroyed`), instancias prendidas de
+    nuevo. Confirmado que `pm2` resucitó solo (valida el `pm2 startup` de
+    la sesión anterior) y que Wazuh manager + agente volvieron activos tras
+    el `stop`/`start`.
+  - `integrations/custom-microsoar` + `.py` desplegados al manager
+    (`root:wazuh`, `750`, mismo patrón que las integraciones oficiales ya
+    instaladas). Primer intento falló por CRLF en los archivos (ver tabla
+    de errores) — corregido en el repo, agregado `.gitattributes` para que
+    no vuelva a pasar, redesplegado.
+  - Bloque `<integration>` agregado a `ossec.conf` (con backup del archivo
+    original antes de tocarlo), apuntando al orchestrator por su IP
+    **privada**. `wazuh-manager` reiniciado, `ossec.log` confirma
+    `Enabling integration for: 'custom-microsoar'`.
+  - Primer intento de brute-force (loop de `ssh` sin password) no disparó
+    la regla de Wazuh — diagnosticado leyendo el ruleset real del manager
+    (`0095-sshd_rules.xml`): la regla `5712` necesita `Failed password`,
+    no `Invalid user`, y la víctima tenía `PasswordAuthentication no` por
+    default de la AMI. Habilitado a propósito (ver tabla de decisiones —
+    es la víctima dedicada al ataque, y sigue sin tener ninguna password
+    real, nadie entra de verdad).
+  - **Brute-force real corrido por el usuario** (loop de `ssh` en
+    PowerShell contra la víctima) → regla `5712` (nivel 10) disparó →
+    `custom-microsoar` posteó al webhook → el incidente apareció en
+    `GET /incidents` **sin ninguna intervención manual**. Confirmado
+    leyendo la lista completa: `id:2`, `ruleId:"5712"`, `srcIp` real del
+    atacante, timestamp exacto del ataque. **Cierra la Fase 1.**
+  - Nota para el guion de la demo real: el mismo ataque de prueba disparó
+    también la regla `40112` (nivel 12) porque el "atacante" y el "admin"
+    fueron la misma laptop/IP en esta sesión — Wazuh correlaciona
+    brute-force seguido de un login exitoso desde la misma IP como
+    sospechoso. Para la demo real, atacante y analista deberían ser
+    máquinas/IPs distintas, como ya prevé el PLAN.md, para no generar
+    ruido extra.
+- **En progreso / a medias:** ajustes de UI que el usuario dejó pendientes
+  de la sesión anterior, todavía sin detallar.
+- **Errores encontrados:** ver tabla de arriba (ciclo de SG,
+  `associate_public_ip_address`, CRLF en los scripts de integración,
+  `PasswordAuthentication` de la víctima).
+- **Próximo paso concreto:** ajustes de UI pendientes; después, video de
+  respaldo y ensayo cronometrado. `PLAN.md` sigue sin actualizar la fecha
+  de deadline (18/08 → 1/9).
+- **Estado de instancias AWS:** las 3 quedaron **running** al cierre de
+  esta sesión (se habían prendido para esta prueba) — pararlas antes de
+  cortar si no se sigue trabajando enseguida.
+
+---
 
 ### Sesión 2026-08-24 — Consolidar branches, descartar frontend de Lola, decisiones de tesis pendientes
 - **Objetivo de la sesión:** `main` seguía parado en "react native front" (06/08)
