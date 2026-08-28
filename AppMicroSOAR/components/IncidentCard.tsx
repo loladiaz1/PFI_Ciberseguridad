@@ -11,11 +11,11 @@ export function IncidentCard({ incident, onPress }: IncidentCardProps) {
   return (
     <Pressable style={styles.card} onPress={onPress}>
       <View style={styles.row}>
-        <Text style={styles.title}>{incident.title}</Text>
+        <Text style={styles.title}>{incident.hostname}</Text>
         <Text style={styles.badge}>{incident.status}</Text>
       </View>
       <Text style={styles.meta}>Severity: {incident.severity}</Text>
-      <Text style={styles.meta}>Owner: {incident.owner}</Text>
+      <Text style={styles.meta}>Src IP: {incident.srcIp}</Text>
     </Pressable>
   );
 }

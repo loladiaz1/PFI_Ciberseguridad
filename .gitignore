@@ -17,3 +17,6 @@ crash.log
 # Node
 node_modules/
 *.db
+
+# Documentacion tecnica interna (solo local, no para el repo remoto)
+ARQUITECTURA_TECNICA.md

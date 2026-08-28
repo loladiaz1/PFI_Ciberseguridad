@@ -1,44 +1,24 @@
-import { incidentsSeed } from '../data/incidents';
+import { http } from './http';
 import type { Incident } from '../types';
 
-export const API_URL = "http://192.168.100.64:3000";
+export const getIncidents = async (): Promise<{ data: Incident[] }> => {
+  const { data } = await http.get<Incident[]>('/api/v1/incidents');
+  return { data };
+};
 
-export const getIncidents = async (): Promise<{ data: Incident[] }> => ({
-  data: incidentsSeed,
-});
+export const getIncidentById = async (id: number): Promise<{ data?: Incident }> => {
+  const { data } = await http.get<Incident>(`/api/v1/incidents/${id}`);
+  return { data };
+};
 
-export const updateUser = async (
-  id: number,
-  data: {
-    name: string;
-    email: string;
-    role: string;
-    avatarUrl?: string | null;
-  }
-) => {
-  const response = await fetch(`${API_URL}/api/users/${id}`, {
-    method: "PUT",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(data),
-  });
+export interface BlockIpResult {
+  incidentId: number;
+  srcIp: string;
+  agentId: string;
+  status: string;
+}
 
-  const text = await response.text();
-
-  let result: any = {};
-
-  try {
-    result = text ? JSON.parse(text) : {};
-  } catch {
-    result = {};
-  }
-
-  if (!response.ok) {
-    throw new Error(
-      result.message || "Unable to update your profile."
-    );
-  }
-
-  return result;
+export const blockIncidentIp = async (id: number): Promise<BlockIpResult> => {
+  const { data } = await http.post<BlockIpResult>(`/api/v1/incidents/${id}/actions/block-ip`);
+  return data;
 };

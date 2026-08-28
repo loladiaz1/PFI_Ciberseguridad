@@ -1,15 +1,16 @@
-export type IncidentStatus = 'open' | 'in-progress' | 'resolved' | 'closed';
-export type IncidentSeverity = 'low' | 'medium' | 'high' | 'critical';
+export type IncidentStatus = 'new' | 'blocked';
 
 export interface Incident {
-  id: string;
-  title: string;
-  severity: IncidentSeverity;
+  id: number;
+  source: string;
+  ruleId: string;
+  severity: number;
+  srcIp: string;
+  hostname: string;
+  agentId: string;
+  timestamp: string;
   status: IncidentStatus;
-  owner: string;
-  updatedAt: string;
-  description?: string;
-  location?: string;
+  blockedAt: string | null;
 }
 
 export interface ActivityItem {

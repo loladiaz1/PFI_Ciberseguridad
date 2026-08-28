@@ -75,6 +75,16 @@ resource "aws_security_group" "wazuh" {
     security_groups = [aws_security_group.victim.id]
   }
 
+  # El orchestrator llama a la API de Wazuh (POST /active-response) para
+  # ejecutar el bloqueo. Por VPC interna, no por var.my_ip.
+  ingress {
+    description     = "Wazuh API from the orchestrator instance"
+    from_port       = 55000
+    to_port         = 55000
+    protocol        = "tcp"
+    security_groups = [aws_security_group.orchestrator.id]
+  }
+
   egress {
     description = "All outbound (package installs, updates, threat-intel APIs)"
     from_port   = 0
@@ -107,6 +117,14 @@ resource "aws_instance" "wazuh" {
 
   # Only runs the installer when install_wazuh = true; otherwise a bare instance.
   user_data = var.install_wazuh ? file("${path.module}/user_data_wazuh.sh") : null
+
+  # associate_public_ip_address solo aplica al lanzar la instancia. Con la
+  # instancia "stopped" (sin IP publica en ese momento), la API de AWS lo
+  # devuelve como false, Terraform lo compara contra el "true" de arriba y
+  # fuerza un replace innecesario -- falso positivo, no un cambio real.
+  lifecycle {
+    ignore_changes = [associate_public_ip_address]
+  }
 
   tags = {
     Name = "micro-soar-wazuh"
@@ -174,8 +192,108 @@ resource "aws_instance" "victim" {
     systemctl start wazuh-agent
   EOT
 
+  # Ver comentario equivalente en aws_instance.wazuh.
+  lifecycle {
+    ignore_changes = [associate_public_ip_address]
+  }
+
   tags = {
     Name = "micro-soar-victim"
     Role = "brute-force-target"
+  }
+}
+
+# ---------------------------------------------------------------------------
+# Orchestrator instance (Node/Express + Prisma). Reachable from el celular
+# solo por Tailscale (100.x.y.z) -- el puerto de la app NUNCA se abre al
+# 0.0.0.0/0 ni siquiera a var.my_ip. Ese es el pitch de Zero Trust del PLAN.
+# ---------------------------------------------------------------------------
+
+resource "aws_security_group" "orchestrator" {
+  name        = "micro-soar-orchestrator-sg"
+  description = "SSH (22) from my IP only. La app se sirve por Tailscale, no por este SG."
+  vpc_id      = data.aws_vpc.default.id
+
+  ingress {
+    description = "SSH from my IP"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = [var.my_ip]
+  }
+
+  # El manager de Wazuh no esta en la tailnet (solo el celular y el
+  # orchestrator lo estan) -- necesita esta via interna por VPC para poder
+  # llamar al webhook. No reabre nada a internet: sigue sin haber ninguna
+  # regla que permita el puerto 8000 desde 0.0.0.0/0 ni desde var.my_ip.
+  # CIDR de la VPC en vez de referenciar el SG de Wazuh: una referencia
+  # cruzada por security_groups entre wazuh <-> orchestrator crea un ciclo
+  # de dependencias (ambos SG tienen bloques ingress inline).
+  ingress {
+    description = "Webhook desde instancias de la VPC (integracion custom-microsoar de Wazuh)"
+    from_port   = 8000
+    to_port     = 8000
+    protocol    = "tcp"
+    cidr_blocks = [data.aws_vpc.default.cidr_block]
+  }
+
+  egress {
+    description = "All outbound (npm install, Tailscale coordination/DERP, Wazuh API)"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "micro-soar-orchestrator-sg"
+  }
+}
+
+resource "aws_instance" "orchestrator" {
+  ami                         = data.aws_ami.ubuntu.id
+  instance_type               = var.orchestrator_instance_type
+  subnet_id                   = data.aws_subnets.default.ids[0]
+  key_name                    = aws_key_pair.wazuh.key_name
+  vpc_security_group_ids      = [aws_security_group.orchestrator.id]
+  associate_public_ip_address = true # solo para el SSH inicial; el trafico de la app va por Tailscale
+
+  root_block_device {
+    volume_size = var.orchestrator_root_volume_gb
+    volume_type = "gp3"
+  }
+
+  # Instala Node.js, Tailscale y pm2. El deploy del codigo (rsync + npm ci +
+  # prisma db push + pm2 start) queda manual -- ver el output orchestrator_deploy_hint.
+  user_data = <<-EOT
+    #!/bin/bash
+    set -euxo pipefail
+    echo 'ubuntu ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/99-ubuntu-nopasswd
+    chmod 440 /etc/sudoers.d/99-ubuntu-nopasswd
+
+    curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+    apt-get install -y nodejs git
+    npm install -g pm2
+
+    curl -fsSL https://tailscale.com/install.sh | sh
+
+    TAILSCALE_AUTHKEY="${var.tailscale_authkey}"
+    if [ -n "$TAILSCALE_AUTHKEY" ]; then
+      tailscale up --authkey="$TAILSCALE_AUTHKEY" --hostname=micro-soar-orchestrator
+    else
+      echo "tailscale_authkey no seteado -- correr 'sudo tailscale up' a mano por SSH." | tee /home/ubuntu/TAILSCALE_PENDING.txt
+    fi
+  EOT
+
+  # Ver comentario equivalente en aws_instance.wazuh. Doblemente importante
+  # aca: un replace de esta instancia pierde la identidad de Tailscale y el
+  # deploy manual del codigo.
+  lifecycle {
+    ignore_changes = [associate_public_ip_address]
+  }
+
+  tags = {
+    Name = "micro-soar-orchestrator"
+    Role = "orchestrator"
   }
 }

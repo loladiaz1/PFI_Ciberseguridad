@@ -13,16 +13,16 @@ import {
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useEffect, useState } from "react";
 
-import BottomNav from "../components/BottomNav";
-import { BrandHeader } from "../components/ui/BrandHeader";
-import Colors from "../styles/colors";
+import BottomNav from "../../components/BottomNav";
+import { BrandHeader } from "../../components/ui/BrandHeader";
+import Colors from "../../styles/colors";
 
 import {
   getStoredUser,
   type User,
-} from "../services/auth";
+} from "../../services/auth";
 
-import { updateUser } from "../services/api";
+import { updateUser } from "../../services/api";
 
 export default function ProfileScreen() {
 

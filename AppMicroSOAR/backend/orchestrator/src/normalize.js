@@ -4,9 +4,10 @@ function normalizeWazuhAlert(alert) {
   const severity = alert?.rule?.level;
   const srcIp = alert?.data?.srcip;
   const hostname = alert?.agent?.name;
+  const agentId = alert?.agent?.id;
   const timestamp = alert?.timestamp;
 
-  const missing = Object.entries({ ruleId, severity, srcIp, hostname, timestamp })
+  const missing = Object.entries({ ruleId, severity, srcIp, hostname, agentId, timestamp })
     .filter(([, value]) => value === undefined)
     .map(([key]) => key);
 
@@ -20,6 +21,7 @@ function normalizeWazuhAlert(alert) {
     severity,
     srcIp,
     hostname,
+    agentId: String(agentId),
     timestamp,
     status: "new",
   };

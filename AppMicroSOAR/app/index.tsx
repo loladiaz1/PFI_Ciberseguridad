@@ -214,7 +214,7 @@ export default function LoginScreen() {
         onPress={() => router.push("/register")}
       >
         <Text style={styles.register}>
-          Don't have an account? Register
+          Don&apos;t have an account? Register
         </Text>
       </TouchableOpacity>
 

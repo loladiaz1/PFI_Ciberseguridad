@@ -8,9 +8,9 @@ import {
 
 import { router } from "expo-router";
 
-import Colors from "../styles/colors";
-import BottomNav from "../components/BottomNav";
-import { BrandHeader } from "../components/ui/BrandHeader";
+import Colors from "../../styles/colors";
+import BottomNav from "../../components/BottomNav";
+import { BrandHeader } from "../../components/ui/BrandHeader";
 
 const recent = [
 

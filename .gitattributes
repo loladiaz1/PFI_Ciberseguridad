@@ -1,0 +1,6 @@
+# Los scripts que corren en Linux (integraciones de Wazuh, especialmente)
+# necesitan LF si o si: un CRLF rompe el shebang ("#!/bin/sh\r" no existe
+# como interprete) y Wazuh falla al ejecutarlos con un error generico de
+# "permissions" que no menciona la linea de fin. Bug real, ver progress.md.
+orchestrator/integrations/* text eol=lf
+*.sh text eol=lf

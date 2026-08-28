@@ -1,11 +1,11 @@
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
-import BottomNav from '../components/BottomNav';
-import { BrandHeader } from '../components/ui/BrandHeader';
-import { Header } from '../components/Header';
-import { activitySeed } from '../data/activity';
-import Colors from '../styles/colors';
+import BottomNav from '../../components/BottomNav';
+import { BrandHeader } from '../../components/ui/BrandHeader';
+import { Header } from '../../components/Header';
+import { activitySeed } from '../../data/activity';
+import Colors from '../../styles/colors';
 
 // Heurística simple para darle un ícono y color distinto a cada tipo de evento
 // según palabras clave en el título. Si más adelante activitySeed trae un campo
@@ -19,30 +19,47 @@ function getActivityVisual(title: string): {
   if (lower.includes('sync')) {
     return { icon: 'sync', color: Colors.primary };
   }
+
   if (lower.includes('queue') || lower.includes('triage')) {
     return { icon: 'format-list-bulleted', color: Colors.warning };
   }
+
   if (lower.includes('playbook')) {
     return { icon: 'book-open-variant', color: Colors.success };
   }
+
   if (lower.includes('block')) {
     return { icon: 'shield-lock', color: Colors.danger };
   }
 
-  return { icon: 'bell-outline', color: Colors.textSecondary };
+  return {
+    icon: 'bell-outline',
+    color: Colors.textSecondary,
+  };
 }
 
 export default function ActivityScreen() {
   return (
     <View style={styles.container}>
       <BrandHeader />
-      <Header title="Activity" subtitle="Recent system events" />
+
+      <Header
+        title="Activity"
+        subtitle="Recent system events"
+      />
 
       <ScrollView contentContainerStyle={styles.content}>
         {activitySeed.length === 0 ? (
           <View style={styles.emptyState}>
-            <MaterialCommunityIcons name="history" size={48} color={Colors.textSecondary} />
-            <Text style={styles.emptyText}>No recent activity yet</Text>
+            <MaterialCommunityIcons
+              name="history"
+              size={48}
+              color={Colors.textSecondary}
+            />
+
+            <Text style={styles.emptyText}>
+              No recent activity yet
+            </Text>
           </View>
         ) : (
           activitySeed.map((item, index) => {
@@ -50,16 +67,37 @@ export default function ActivityScreen() {
             const isLast = index === activitySeed.length - 1;
 
             return (
-              <View key={item.id} style={[styles.card, !isLast && styles.cardSpacing]}>
-                <View style={[styles.iconBadge, { backgroundColor: `${visual.color}22` }]}>
-                  <MaterialCommunityIcons name={visual.icon} size={20} color={visual.color} />
+              <View
+                key={item.id}
+                style={[
+                  styles.card,
+                  !isLast && styles.cardSpacing,
+                ]}
+              >
+                <View
+                  style={[
+                    styles.iconBadge,
+                    {
+                      backgroundColor: `${visual.color}22`,
+                    },
+                  ]}
+                >
+                  <MaterialCommunityIcons
+                    name={visual.icon}
+                    size={20}
+                    color={visual.color}
+                  />
                 </View>
 
                 <View style={styles.textBlock}>
-                  <Text style={styles.title}>{item.title}</Text>
+                  <Text style={styles.title}>
+                    {item.title}
+                  </Text>
                 </View>
 
-                <Text style={styles.time}>{item.timestamp}</Text>
+                <Text style={styles.time}>
+                  {item.timestamp}
+                </Text>
               </View>
             );
           })
