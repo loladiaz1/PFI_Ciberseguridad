@@ -2,6 +2,7 @@
 function normalizeWazuhAlert(alert) {
   const ruleId = alert?.rule?.id;
   const severity = alert?.rule?.level;
+  const ruleDescription = alert?.rule?.description;
   const srcIp = alert?.data?.srcip;
   const hostname = alert?.agent?.name;
   const agentId = alert?.agent?.id;
@@ -19,6 +20,7 @@ function normalizeWazuhAlert(alert) {
     source: "wazuh",
     ruleId: String(ruleId),
     severity,
+    ruleDescription: ruleDescription ?? null,
     srcIp,
     hostname,
     agentId: String(agentId),

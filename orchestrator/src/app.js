@@ -1,4 +1,5 @@
 const express = require("express");
+const rateLimit = require("express-rate-limit");
 const { prisma } = require("./db");
 const { normalizeWazuhAlert } = require("./normalize");
 const { authenticate, blockIp } = require("./wazuh");
@@ -7,7 +8,18 @@ const { login, requireAuth } = require("./auth");
 const app = express();
 app.use(express.json());
 
-app.post("/api/v1/auth/login", (req, res) => {
+// El propio login es un endpoint de password guessing en potencia -- 5
+// intentos cada 15 min por IP, misma logica que Wazuh detecta del lado del
+// atacante pero aplicada a nuestro propio backend.
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { detail: "Too many login attempts, try again later" },
+});
+
+app.post("/api/v1/auth/login", loginLimiter, (req, res) => {
   const { username, password } = req.body || {};
   const token = login(username, password);
 

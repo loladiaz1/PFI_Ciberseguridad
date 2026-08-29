@@ -8,16 +8,17 @@ datasource db {
 }
 
 model Incident {
-  id        Int       @id @default(autoincrement())
-  source    String
-  ruleId    String
-  severity  Int
-  srcIp     String
-  hostname  String
-  agentId   String
-  timestamp String
-  status    String    @default("new")
-  blockedAt DateTime?
+  id              Int       @id @default(autoincrement())
+  source          String
+  ruleId          String
+  severity        Int
+  ruleDescription String?
+  srcIp           String
+  hostname        String
+  agentId         String
+  timestamp       String
+  status          String    @default("new")
+  blockedAt       DateTime?
 
   @@map("incidents")
 }

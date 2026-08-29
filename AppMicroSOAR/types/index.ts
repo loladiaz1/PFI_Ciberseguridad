@@ -5,6 +5,7 @@ export interface Incident {
   source: string;
   ruleId: string;
   severity: number;
+  ruleDescription: string | null;
   srcIp: string;
   hostname: string;
   agentId: string;
