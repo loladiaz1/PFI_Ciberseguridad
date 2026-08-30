@@ -3,7 +3,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
 import Colors from "../styles/colors";
 import BottomNav from "../components/BottomNav";
-import { BrandLogo } from "../components/BrandLogo";
+import { BrandHeader } from "../components/ui/BrandHeader";
 import { MaterialIcons } from "@expo/vector-icons";
 import { getIncidentById } from "../services/api";
 import { severityLabel } from "../utils/severity";
@@ -43,13 +43,20 @@ export default function IncidentDetail() {
 
     return (
         <View style={styles.container}>
-            <BrandLogo showText={false} />
+            <BrandHeader />
 
             <Text style={styles.title}>
                 Rule #{incident.ruleId}
             </Text>
 
+            {incident.ruleDescription ? (
+                <Text style={styles.subtitle}>{incident.ruleDescription}</Text>
+            ) : null}
+
             <View style={styles.card}>
+
+                <Text style={styles.label}>Detected</Text>
+                <Text style={styles.value}>{new Date(incident.timestamp).toLocaleString()}</Text>
 
                 <Text style={styles.label}>Severity</Text>
                 <View style={styles.statusRow}>
@@ -123,8 +130,14 @@ const styles = StyleSheet.create({
     title: {
         fontSize: 30,
         fontWeight: "bold",
-        marginBottom: 20,
+        marginBottom: 6,
         color: Colors.text
+    },
+
+    subtitle: {
+        fontSize: 15,
+        color: Colors.textSecondary,
+        marginBottom: 20
     },
 
     card: {

@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { router, useLocalSearchParams } from "expo-router";
 import Colors from "../styles/colors";
 import BottomNav from "../components/BottomNav";
-import { BrandLogo } from "../components/BrandLogo";
+import { BrandHeader } from "../components/ui/BrandHeader";
 import { blockIncidentIp } from "../services/api";
 
 export default function LoadingScreen(){
@@ -36,7 +36,7 @@ return(
 
 <View style={styles.container}>
 
-<BrandLogo showText={false} />
+<BrandHeader />
 
 {error ? (
     <>

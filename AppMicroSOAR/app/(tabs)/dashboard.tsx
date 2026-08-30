@@ -11,7 +11,7 @@ import { useCallback, useState } from "react";
 import { useFocusEffect } from "@react-navigation/native";
 
 import Colors from "@/styles/colors";
-import { BrandLogo } from "@/components/BrandLogo";
+import { BrandHeader } from "@/components/ui/BrandHeader";
 import { getIncidents } from "@/services/api";
 import { severityLabel } from "@/utils/severity";
 import type { Incident } from "@/types";
@@ -35,8 +35,15 @@ useFocusEffect(
 );
 
 const recent = incidents.slice(0, 3);
-const openCount = incidents.filter((i) => i.status === "new").length;
+const openIncidents = incidents.filter((i) => i.status === "new");
+const openCount = openIncidents.length;
 const blockedCount = incidents.filter((i) => i.status === "blocked").length;
+
+const highestOpenSeverity = openIncidents.reduce(
+    (max, i) => Math.max(max, i.severity),
+    0
+);
+const threatLevel = openCount > 0 ? severityLabel(highestOpenSeverity) : null;
 
 return(
 
@@ -44,7 +51,7 @@ return(
 
 <ScrollView>
 
-<BrandLogo showText={false} />
+<BrandHeader />
 
 <Text style={styles.greeting}>
 Good Evening
@@ -54,18 +61,18 @@ Good Evening
 SOC Analyst
 </Text>
 
-<View style={styles.threatCard}>
+<View style={[styles.threatCard, threatLevel && { backgroundColor: threatLevel.color }]}>
 
 <Text style={styles.threatTitle}>
 Threat Level
 </Text>
 
 <Text style={styles.threat}>
-🔴 HIGH
+{threatLevel ? threatLevel.label : "CLEAR"}
 </Text>
 
 <Text style={styles.subtitle}>
-2 Critical Assets
+{openCount} open incident{openCount === 1 ? "" : "s"}
 </Text>
 
 </View>
@@ -92,34 +99,6 @@ Incidents
 
 <Text style={styles.label}>
 Blocked
-</Text>
-
-</View>
-
-</View>
-
-<View style={styles.row}>
-
-<View style={styles.smallCard}>
-
-<Text style={styles.number}>
-22
-</Text>
-
-<Text style={styles.label}>
-Assets
-</Text>
-
-</View>
-
-<View style={styles.smallCard}>
-
-<Text style={styles.online}>
-ONLINE
-</Text>
-
-<Text style={styles.label}>
-Status
 </Text>
 
 </View>
@@ -267,12 +246,6 @@ number:{
 color:Colors.text,
 fontSize:32,
 fontWeight:"bold"
-},
-
-online:{
-fontSize:24,
-fontWeight:"bold",
-color:Colors.success
 },
 
 label:{

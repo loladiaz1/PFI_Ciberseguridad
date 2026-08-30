@@ -10,6 +10,159 @@
 
 ---
 
+## Entrada 5 — 2026-08-30: Un incidente de git, reconstruir el backend, e integrar el diseño sin heredar sus regresiones
+
+### Contexto
+
+El pedido de esta sesión era simple de enunciar: que la app dejara de tener
+cualquier dato simulado — el dashboard, el perfil de usuario, el log de
+actividad — y que además se aprovechara el trabajo visual que había hecho
+Lola en su branch (`unificacion-backend-frontend`), rediseñando buena parte
+de las pantallas bajo la marca "Fortia". El PLAN.md original ya contemplaba
+un `GET /api/v1/audit` opcional; lo que faltaba era decidir cómo incorporar
+un rediseño ajeno sin repetir el problema que ya se había evitado una vez,
+el 24/08, cuando se decidió no mergear esa misma branch porque reimplementaba
+el backend entero sin la integración real de Wazuh.
+
+### El incidente
+
+A mitad de sesión, sin que nadie lo pidiera, el repositorio apareció parado
+en `unificacion-backend-frontend` — la branch descartada — con un merge ya
+aplicado que había traído su backend paralelo. Los archivos que sostienen
+todo el proyecto (`orchestrator/src/auth.js`, `db.js`, `normalize.js`,
+`wazuh.js`, y sus tests) habían desaparecido del árbol de trabajo, sin que
+`git status` mostrara ninguna eliminación pendiente: no era un cambio sin
+commitear, era el estado real de esa branch.
+
+La causa, una vez reconstruida, fue una combinación de dos comandos
+ejecutados en el momento equivocado: un `checkout` a la branch descartada,
+seguido de un `git reset --hard origin/main` con la intención de "volver
+para atrás". El `reset --hard` hace exactamente lo que promete — descarta
+cualquier cambio sin commitear en el árbol de trabajo — pero eso incluía
+todo el trabajo de la sesión que todavía no se había guardado: el rate
+limiting recién agregado, el campo `ruleDescription`, las actualizaciones a
+`PLAN.md` y `README.md`. Nada de eso estaba perdido de forma permanente en
+el sentido de "corrompido" — nunca había llegado a existir como commit — así
+que no había manera de recuperarlo con git. Sí había, en cambio, una
+pregunta más urgente que responder antes de tocar nada más: si el daño
+había llegado a `main`.
+
+No había llegado. `main` local y remoto seguían exactamente donde estaban
+antes del incidente — el `reset` había apuntado a `origin/main` como
+destino, no lo había modificado, y el merge problemático vivía únicamente
+en la branch ya descartada, que además ya estaba publicada en el remoto tal
+cual, sin haber tocado nunca la rama principal. La secuencia de verificación
+fue deliberadamente conservadora: confirmar la branch actual, comparar
+`main` contra esa branch archivo por archivo, confirmar que el commit
+problemático no era alcanzable desde ningún remoto salvo el suyo propio, y
+recién ahí volver a `main` (guardando en un `stash` lo que hubiera, por las
+dudas, antes de cualquier cambio de branch). El costo real del incidente
+terminó siendo, exclusivamente, rehacer un par de horas de trabajo sin
+commitear — no perder nada de lo que ya estaba guardado.
+
+La lección que queda, más allá del backend reconstruido: un `git reset
+--hard` no pregunta qué se pierde, y un cambio de branch a mitad de sesión
+puede dejar el árbol de trabajo pareciendo "el mismo repo de siempre"
+mientras en realidad es otro. Verificar la branch activa y el estado real
+del árbol de trabajo antes de asumir continuidad pasó a ser, desde acá, un
+paso explícito y no una formalidad.
+
+### Reconstruir sin mocks
+
+Con `main` de vuelta, la parte constructiva de la sesión tuvo dos frentes.
+
+El primero fue backend: además de rehacer el rate limiting y el
+`ruleDescription` perdidos, se agregaron dos piezas nuevas — un modelo
+`User` con `GET`/`PUT /api/v1/me`, y un modelo `AuditEvent` con
+`GET /api/v1/audit`. Ninguno de los dos necesitó un endpoint de registro
+real: el perfil se resuelve con un `upsert` sobre el `username` que ya trae
+el JWT (la fila se crea sola la primera vez que el usuario autenticado la
+pide, sin condición de carrera con el arranque del servidor), y el audit
+log se llena solo, agregando una línea en los tres puntos donde ya pasaba
+algo real — un login exitoso, un incidente detectado por el webhook, una IP
+bloqueada. No hizo falta inventar ningún dato: alcanzó con registrar lo que
+el sistema ya hacía.
+
+El segundo frente fue reconciliar el diseño de Lola con esos datos reales,
+pantalla por pantalla en vez de por branch completa. Revisando el diff de
+su branch contra `main` (29 archivos) apareció un patrón que confirmó por
+qué la decisión del 24/08 de no mergear en bloque había sido la correcta:
+varias de esas pantallas no eran solo un rediseño visual, sino un
+retroceso silencioso a datos simulados. La más elocuente fue
+`loading.tsx`, que tenía una constante `MOCK_SUCCESS = true` literal y
+nunca llegaba a llamar al backend — la pantalla que en la versión real mide
+el tiempo exacto del bloqueo, el número central del pitch del proyecto,
+había sido reemplazada por una animación con tiempos inventados.
+`success.tsx` esperaba parámetros de navegación con otros nombres
+(`ip`/`target`/`time` en vez de `srcIp`/`hostname`/`elapsedMs`), con un
+fallback hardcodeado de `"1.4 seconds"` que se hubiera mostrado siempre,
+sin importar cuánto tardara el bloqueo real. `incident.tsx` esperaba
+recibir el incidente entero serializado como parámetro de navegación en
+vez de buscarlo por `id`, así que hubiera quedado en blanco cada vez que se
+tocara un incidente desde cualquier lista real.
+
+El criterio que se aplicó fue separar explícitamente qué de cada pantalla
+era diseño y qué era lógica de datos, y adoptar solo lo primero cuando lo
+segundo estaba comprometido. El login y el registro sí se adoptaron
+completos — su validación de contraseña y la marca "Fortia" eran una
+mejora genuina sin ningún retroceso de datos — aunque el login pedía un
+email con validación de formato en lugar de un username, y hubo que
+adaptarlo antes de traerlo: el backend real usa un usuario fijo
+(`analyst`), que nunca hubiera pasado esa validación, dejando el botón de
+login permanentemente deshabilitado. Las pantallas con lógica comprometida
+(`confirm`, `loading`, `success`, `incident`, `incidents`) conservaron su
+código real intacto y solo incorporaron el componente de marca
+(`BrandHeader`), para quedar visualmente consistentes con el resto sin
+resignar ningún dato real. Se descartaron sin tocar, además, dos carpetas
+completas de esa branch (`AppMicroSOAR/terraform/` y `AppMicroSOAR/docs/`)
+que resultaron ser copias duplicadas de la infraestructura y la
+documentación reales de la raíz del repo — adoptarlas hubiera dejado dos
+versiones de la infraestructura y de la documentación conviviendo sin que
+nada avisara del conflicto.
+
+### Un bug de producción encontrado por el propio usuario
+
+Ya con todo deployado a la instancia real de AWS, el login desde el
+celular físico empezó a fallar con "Invalid credentials" a pesar de usar
+la contraseña correcta. El diagnóstico se hizo por descarte, de afuera
+hacia adentro: primero se confirmó que el servidor respondía bien
+probando el login directo contra la instancia; después se confirmó que
+Tailscale y la conectividad del celular estaban bien, pidiéndole a la app
+del navegador del propio teléfono la misma URL que usa la app y
+verificando que respondiera. Con la red y el servidor descartados como
+causa, quedaba solo la propia lógica de la app — y ahí apareció el
+problema real: el limitador de intentos de `/auth/login` (agregado en la
+sesión anterior, 5 intentos cada 15 minutos) ya se había agotado durante
+las pruebas, y el bloque `catch` del login mostraba el mismo texto
+genérico de "credenciales inválidas" para cualquier error, sin distinguir
+un `401` real de un `429` de límite excedido.
+
+La solución tuvo dos partes. La inmediata, para destrabar la prueba, fue
+reiniciar el proceso del orchestrator — el contador del limitador vive en
+memoria, así que un reinicio lo resetea sin tocar nada más. La de fondo
+fue ampliar el límite a 20 intentos (sigue siendo insignificante para un
+ataque de fuerza bruta automatizado real, pero deja margen de sobra para
+los typos de una demo en vivo) y diferenciar el mensaje de error según el
+código de estado de la respuesta, para que un límite excedido nunca vuelva
+a leerse como una contraseña incorrecta.
+
+### Resultado
+
+Al cierre de la sesión, la app no tiene ningún dato mockeado restante
+—dashboard, perfil, actividad, incidentes— y el diseño visual de Lola quedó
+incorporado donde sumaba, sin heredar ninguna de sus regresiones a datos
+simulados. El incidente de git, aunque costó tiempo, terminó siendo también
+la confirmación de que la disciplina de no mergear la branch completa el
+24/08 había sido la decisión correcta: la misma branch, tres semanas
+después, seguía teniendo el mismo problema de fondo.
+
+### Próximo paso
+
+Video de respaldo y ensayo cronometrado del guion completo — lo único que
+queda de cara al 1 de septiembre que no es código.
+
+---
+
 ## Entrada 4 — 2026-08-26: Se conecta el webhook real de Wazuh — primera detección automática de punta a punta
 
 ### Contexto

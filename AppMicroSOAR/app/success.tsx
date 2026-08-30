@@ -2,7 +2,7 @@ import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import Colors from "../styles/colors";
 import BottomNav from "../components/BottomNav";
-import { BrandLogo } from "../components/BrandLogo";
+import { BrandHeader } from "../components/ui/BrandHeader";
 
 export default function SuccessScreen(){
 
@@ -18,7 +18,7 @@ return(
 
 <View style={styles.container}>
 
-<BrandLogo showText={false} />
+<BrandHeader />
 
 <Text style={styles.check}>
 ✅

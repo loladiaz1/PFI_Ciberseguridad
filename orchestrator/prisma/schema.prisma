@@ -8,16 +8,36 @@ datasource db {
 }
 
 model Incident {
-  id        Int       @id @default(autoincrement())
-  source    String
-  ruleId    String
-  severity  Int
-  srcIp     String
-  hostname  String
-  agentId   String
-  timestamp String
-  status    String    @default("new")
-  blockedAt DateTime?
+  id              Int       @id @default(autoincrement())
+  source          String
+  ruleId          String
+  severity        Int
+  ruleDescription String?
+  srcIp           String
+  hostname        String
+  agentId         String
+  timestamp       String
+  status          String    @default("new")
+  blockedAt       DateTime?
 
   @@map("incidents")
+}
+
+model User {
+  id       Int    @id @default(autoincrement())
+  username String @unique
+  name     String
+  email    String
+  role     String @default("soc-analyst")
+
+  @@map("users")
+}
+
+model AuditEvent {
+  id        Int      @id @default(autoincrement())
+  type      String
+  detail    String
+  createdAt DateTime @default(now())
+
+  @@map("audit_events")
 }

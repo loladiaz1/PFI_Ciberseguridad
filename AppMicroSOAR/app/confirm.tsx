@@ -3,7 +3,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
 import Colors from "../styles/colors";
 import BottomNav from "../components/BottomNav";
-import { BrandLogo } from "../components/BrandLogo";
+import { BrandHeader } from "../components/ui/BrandHeader";
 import { getIncidentById } from "../services/api";
 import { severityLabel } from "../utils/severity";
 import type { Incident } from "../types";
@@ -29,7 +29,7 @@ export default function ConfirmScreen() {
 
   return (
     <View style={styles.container}>
-      <BrandLogo showText={false} />
+      <BrandHeader />
       <Text style={styles.icon}>⚠️</Text>
 
       <Text style={styles.title}>
