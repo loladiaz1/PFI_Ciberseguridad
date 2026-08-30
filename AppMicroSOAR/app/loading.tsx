@@ -6,10 +6,29 @@ import BottomNav from "../components/BottomNav";
 import { BrandHeader } from "../components/ui/BrandHeader";
 import { blockIncidentIp } from "../services/api";
 
+// Solo cosmetico -- va revelando un mensaje a la vez mientras se espera la
+// respuesta real de la API. No determina cuando navega: eso lo decide
+// unicamente blockIncidentIp() resolviendo o rechazando de verdad.
+const STEP_DELAY = 600;
+
 export default function LoadingScreen(){
 
 const { id, srcIp, hostname } = useLocalSearchParams<{ id: string; srcIp: string; hostname: string }>();
 const [error, setError] = useState("");
+const [visibleStep, setVisibleStep] = useState(0);
+
+const steps = [
+    "Connecting to Wazuh...",
+    `Blocking ${srcIp}...`,
+    "Updating firewall...",
+];
+
+useEffect(() => {
+    if (visibleStep >= steps.length - 1) return;
+    const timer = setTimeout(() => setVisibleStep((s) => s + 1), STEP_DELAY);
+    return () => clearTimeout(timer);
+// eslint-disable-next-line react-hooks/exhaustive-deps -- "steps" se recalcula cada render, solo importa visibleStep
+}, [visibleStep]);
 
 useEffect(()=>{
 
@@ -36,7 +55,7 @@ return(
 
 <View style={styles.container}>
 
-<BrandHeader />
+<BrandHeader logoSize={96} />
 
 {error ? (
     <>
@@ -45,23 +64,15 @@ return(
     </>
 ) : (
     <>
-        <ActivityIndicator size="large"/>
+        <ActivityIndicator size="large" color={Colors.primary} style={styles.spinner} />
 
         <Text style={styles.title}>
         Executing Mitigation...
         </Text>
 
-        <Text style={styles.text}>
-        Connecting to Wazuh...
-        </Text>
-
-        <Text style={styles.text}>
-        Blocking {srcIp}...
-        </Text>
-
-        <Text style={styles.text}>
-        Updating firewall...
-        </Text>
+        <View style={styles.stepWrap}>
+            <Text style={styles.text}>{steps[visibleStep]}</Text>
+        </View>
     </>
 )}
 <BottomNav />
@@ -81,11 +92,20 @@ alignItems:"center",
 backgroundColor:Colors.background
 },
 
+spinner:{
+marginTop:20,
+},
+
 title:{
 fontSize:28,
 fontWeight:"bold",
 marginVertical:25,
 color:Colors.text
+},
+
+stepWrap:{
+minHeight:26,
+alignItems:"center",
 },
 
 text:{

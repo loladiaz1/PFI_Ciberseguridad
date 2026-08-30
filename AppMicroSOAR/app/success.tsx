@@ -1,5 +1,7 @@
-import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { useFonts, Roboto_600SemiBold, Roboto_700Bold } from "@expo-google-fonts/roboto";
 import Colors from "../styles/colors";
 import BottomNav from "../components/BottomNav";
 import { BrandHeader } from "../components/ui/BrandHeader";
@@ -12,19 +14,26 @@ const { srcIp, hostname, elapsedMs } = useLocalSearchParams<{
     elapsedMs: string;
 }>();
 
+const [fontsLoaded] = useFonts({ Roboto_600SemiBold, Roboto_700Bold });
+
 const seconds = elapsedMs ? (Number(elapsedMs) / 1000).toFixed(1) : "-";
 
 return(
 
 <View style={styles.container}>
 
+<ScrollView contentContainerStyle={styles.content}>
+
 <BrandHeader />
 
-<Text style={styles.check}>
-✅
-</Text>
+<MaterialCommunityIcons
+    name="check-circle"
+    size={90}
+    color={Colors.success}
+    style={styles.icon}
+/>
 
-<Text style={styles.title}>
+<Text style={[styles.title, fontsLoaded && styles.titleRoboto]}>
 Mitigation Completed
 </Text>
 
@@ -38,7 +47,7 @@ The malicious IP has been successfully blocked.
 Blocked IP
 </Text>
 
-<Text style={styles.value}>
+<Text style={[styles.value, fontsLoaded && styles.valueRoboto]}>
 {srcIp}
 </Text>
 
@@ -46,7 +55,7 @@ Blocked IP
 Target
 </Text>
 
-<Text style={styles.value}>
+<Text style={[styles.value, fontsLoaded && styles.valueRoboto]}>
 {hostname}
 </Text>
 
@@ -54,7 +63,7 @@ Target
 Execution Time
 </Text>
 
-<Text style={styles.value}>
+<Text style={[styles.value, fontsLoaded && styles.valueRoboto]}>
 {seconds} seconds
 </Text>
 
@@ -70,6 +79,9 @@ Back to Dashboard
 </Text>
 
 </TouchableOpacity>
+
+</ScrollView>
+
 <BottomNav />
 
 </View>
@@ -82,13 +94,18 @@ const styles = StyleSheet.create({
   container:{
     flex:1,
     backgroundColor:Colors.background,
-    justifyContent:"center",
-    padding:25
   },
 
-  check:{
-    fontSize:70,
-    textAlign:"center"
+  content:{
+    flexGrow:1,
+    justifyContent:"center",
+    padding:25,
+    paddingBottom:110,
+  },
+
+  icon:{
+    alignSelf:"center",
+    marginTop:10,
   },
 
   title:{
@@ -97,6 +114,10 @@ const styles = StyleSheet.create({
     textAlign:"center",
     marginTop:15,
     color:Colors.text
+  },
+
+  titleRoboto:{
+    fontFamily:"Roboto_700Bold",
   },
 
   subtitle:{
@@ -122,6 +143,10 @@ const styles = StyleSheet.create({
     fontSize:18,
     fontWeight:"600",
     color:Colors.text
+  },
+
+  valueRoboto:{
+    fontFamily:"Roboto_600SemiBold",
   },
 
   button:{
