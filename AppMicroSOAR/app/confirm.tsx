@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, ScrollView } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
 import Colors from "../styles/colors";
@@ -19,8 +19,12 @@ export default function ConfirmScreen() {
 
   if (!incident) {
     return (
-      <View style={[styles.container, styles.centered]}>
-        <ActivityIndicator size="large" />
+      <View style={styles.container}>
+        <BrandHeader />
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" />
+        </View>
+        <BottomNav />
       </View>
     );
   }
@@ -30,52 +34,58 @@ export default function ConfirmScreen() {
   return (
     <View style={styles.container}>
       <BrandHeader />
-      <Text style={styles.icon}>⚠️</Text>
 
-      <Text style={styles.title}>
-        Confirm Action
-      </Text>
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
 
-      <Text style={styles.subtitle}>
-        You are about to block the following IP
-      </Text>
+        <Text style={styles.icon}>⚠️</Text>
 
-      <View style={styles.card}>
-
-        <Text style={styles.label}>Attacker IP</Text>
-        <Text style={styles.value}>{incident.srcIp}</Text>
-
-        <Text style={styles.label}>Target</Text>
-        <Text style={styles.value}>{incident.hostname}</Text>
-
-        <Text style={styles.label}>Severity</Text>
-        <Text style={[styles.critical, { color: severity.color }]}>{severity.label}</Text>
-
-      </View>
-
-      <Text style={styles.warning}>
-        This action will update the firewall rules and block the attacker.
-      </Text>
-
-      <TouchableOpacity
-        style={styles.button}
-        onPress={() => router.push({
-          pathname: "/loading",
-          params: { id: String(incident.id), srcIp: incident.srcIp, hostname: incident.hostname },
-        })}
-      >
-        <Text style={styles.buttonText}>
-          BLOCK IP
+        <Text style={styles.title}>
+          Confirm Action
         </Text>
-      </TouchableOpacity>
 
-      <TouchableOpacity
-        onPress={() => router.back()}
-      >
-        <Text style={styles.cancel}>
-          Cancel
+        <Text style={styles.subtitle}>
+          You are about to block the following IP
         </Text>
-      </TouchableOpacity>
+
+        <View style={styles.card}>
+
+          <Text style={styles.label}>Attacker IP</Text>
+          <Text style={styles.value}>{incident.srcIp}</Text>
+
+          <Text style={styles.label}>Target</Text>
+          <Text style={styles.value}>{incident.hostname}</Text>
+
+          <Text style={styles.label}>Severity</Text>
+          <Text style={[styles.critical, { color: severity.color }]}>{severity.label}</Text>
+
+        </View>
+
+        <Text style={styles.warning}>
+          This action will update the firewall rules and block the attacker.
+        </Text>
+
+        <TouchableOpacity
+          style={styles.button}
+          onPress={() => router.push({
+            pathname: "/loading",
+            params: { id: String(incident.id), srcIp: incident.srcIp, hostname: incident.hostname },
+          })}
+        >
+          <Text style={styles.buttonText}>
+            BLOCK IP
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => router.back()}
+        >
+          <Text style={styles.cancel}>
+            Cancel
+          </Text>
+        </TouchableOpacity>
+
+      </ScrollView>
+
       <BottomNav />
 
     </View>
@@ -87,11 +97,21 @@ const styles = StyleSheet.create({
   container:{
     flex:1,
     backgroundColor:Colors.background,
+  },
+
+  scroll:{
+    flex:1,
+  },
+
+  content:{
+    flexGrow:1,
     justifyContent:"center",
-    padding:25
+    padding:25,
   },
 
   centered:{
+    flex:1,
+    justifyContent:"center",
     alignItems:"center",
   },
 

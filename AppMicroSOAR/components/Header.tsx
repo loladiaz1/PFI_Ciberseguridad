@@ -17,7 +17,7 @@ export function Header({ title, subtitle }: HeaderProps) {
 }
 
 const styles = StyleSheet.create({
-  container: { paddingVertical: 12, marginBottom: 10 },
+  container: { paddingHorizontal: 20, paddingVertical: 12, marginBottom: 10 },
   title: { fontSize: 24, fontWeight: '700', color: Colors.text },
   subtitle: { fontSize: 13, color: Colors.textSecondary, marginTop: 4 },
 });

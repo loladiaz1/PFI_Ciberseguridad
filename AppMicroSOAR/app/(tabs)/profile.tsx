@@ -103,8 +103,11 @@ export default function ProfileScreen() {
 
   if (loading) {
     return (
-      <View style={[styles.container, styles.centered]}>
-        <ActivityIndicator size="large" color={Colors.primary} />
+      <View style={styles.container}>
+        <BrandHeader />
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+        </View>
       </View>
     );
   }
@@ -192,6 +195,7 @@ const styles = StyleSheet.create({
   },
 
   centered: {
+    flex: 1,
     justifyContent: "center",
     alignItems: "center",
   },

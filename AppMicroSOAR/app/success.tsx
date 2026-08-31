@@ -22,9 +22,9 @@ return(
 
 <View style={styles.container}>
 
-<ScrollView contentContainerStyle={styles.content}>
-
 <BrandHeader />
+
+<ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
 
 <MaterialCommunityIcons
     name="check-circle"
@@ -96,11 +96,14 @@ const styles = StyleSheet.create({
     backgroundColor:Colors.background,
   },
 
+  scroll:{
+    flex:1,
+  },
+
   content:{
     flexGrow:1,
     justifyContent:"center",
     padding:25,
-    paddingBottom:110,
   },
 
   icon:{

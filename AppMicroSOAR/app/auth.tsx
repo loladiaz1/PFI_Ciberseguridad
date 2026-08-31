@@ -4,6 +4,7 @@ import { useState } from "react";
 import * as LocalAuthentication from "expo-local-authentication";
 import Colors from "../styles/colors";
 import BottomNav from "@/components/BottomNav";
+import { BrandHeader } from "@/components/ui/BrandHeader";
 
 export default function AuthScreen(){
 
@@ -36,6 +37,10 @@ return(
 
 <View style={styles.container}>
 
+<BrandHeader />
+
+<View style={styles.content}>
+
 <Text style={styles.icon}>🛡️</Text>
 
 <Text style={styles.title}>
@@ -63,6 +68,9 @@ Authenticate
 </Text>
 
 </TouchableOpacity>
+
+</View>
+
 <BottomNav />
 
 </View>
@@ -75,9 +83,13 @@ const styles = StyleSheet.create({
 
   container:{
     flex:1,
+    backgroundColor:Colors.background,
+  },
+
+  content:{
+    flex:1,
     justifyContent:"center",
     alignItems:"center",
-    backgroundColor:Colors.background,
     padding:25
   },
 
