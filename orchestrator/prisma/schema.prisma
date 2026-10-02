@@ -13,12 +13,15 @@ model Incident {
   ruleId          String
   severity        Int
   ruleDescription String?
-  srcIp           String
+  srcIp           String?
   hostname        String
   agentId         String
   timestamp       String
   status          String    @default("new")
   blockedAt       DateTime?
+  isolatedAt      DateTime?
+  enrichmentVt        String?
+  enrichmentAbuseIpdb String?
 
   @@map("incidents")
 }

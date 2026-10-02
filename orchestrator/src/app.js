@@ -2,7 +2,8 @@ const express = require("express");
 const rateLimit = require("express-rate-limit");
 const { prisma } = require("./db");
 const { normalizeWazuhAlert } = require("./normalize");
-const { authenticate, blockIp } = require("./wazuh");
+const { authenticate, blockIp, isolateHost } = require("./wazuh");
+const { enrichIp } = require("./enrichment");
 const { login, requireAuth } = require("./auth");
 
 const app = express();
@@ -48,10 +49,29 @@ app.post("/api/v1/webhook/wazuh", async (req, res) => {
   }
 
   const incident = await prisma.incident.create({ data: fields });
+  const ruleLabel = fields.ruleDescription ?? `Rule ${fields.ruleId}`;
   await logAudit(
     "incident_detected",
-    `${fields.ruleDescription ?? `Rule ${fields.ruleId}`} from ${fields.srcIp}`
+    fields.srcIp ? `${ruleLabel} from ${fields.srcIp}` : `${ruleLabel} on ${fields.hostname}`
   );
+
+  // Solo tiene sentido enriquecer si hay una IP atacante -- una alerta de
+  // FIM/VirusTotal (CU-02) no tiene srcIp, no hay nada que consultar.
+  // No se espera antes de responder: Wazuh no debe quedar bloqueado por una
+  // llamada a VT/AbuseIPDB. Si no hay API key configurada, enrichIp no pega
+  // a la red y esto es un no-op.
+  if (fields.srcIp) {
+    enrichIp(fields.srcIp)
+      .then(({ vt, abuseipdb }) => {
+        if (!vt && !abuseipdb) return;
+        return prisma.incident.update({
+          where: { id: incident.id },
+          data: { enrichmentVt: vt, enrichmentAbuseIpdb: abuseipdb },
+        });
+      })
+      .catch((err) => console.error("No se pudo enriquecer el incidente:", err.message));
+  }
+
   res.status(201).json(incident);
 });
 
@@ -105,6 +125,9 @@ app.post("/api/v1/incidents/:id/actions/block-ip", requireAuth, async (req, res)
   if (!incident) {
     return res.status(404).json({ detail: "Incident not found" });
   }
+  if (!incident.srcIp) {
+    return res.status(422).json({ detail: "Este incidente no tiene IP de origen para bloquear" });
+  }
 
   try {
     const token = await authenticate(
@@ -127,6 +150,38 @@ app.post("/api/v1/incidents/:id/actions/block-ip", requireAuth, async (req, res)
   res.status(200).json({
     incidentId: updated.id,
     srcIp: updated.srcIp,
+    agentId: updated.agentId,
+    status: updated.status,
+  });
+});
+
+app.post("/api/v1/incidents/:id/actions/isolate-host", requireAuth, async (req, res) => {
+  const incident = await prisma.incident.findUnique({ where: { id: Number(req.params.id) } });
+  if (!incident) {
+    return res.status(404).json({ detail: "Incident not found" });
+  }
+
+  try {
+    const token = await authenticate(
+      process.env.WAZUH_HOST,
+      process.env.WAZUH_USER,
+      process.env.WAZUH_PASSWORD
+    );
+    await isolateHost(process.env.WAZUH_HOST, token, incident.agentId);
+  } catch (err) {
+    return res.status(502).json({ detail: err.message });
+  }
+
+  const updated = await prisma.incident.update({
+    where: { id: incident.id },
+    data: { status: "isolated", isolatedAt: new Date() },
+  });
+
+  await logAudit("host_isolated", `Isolated ${updated.hostname} (incident #${updated.id})`);
+
+  res.status(200).json({
+    incidentId: updated.id,
+    hostname: updated.hostname,
     agentId: updated.agentId,
     status: updated.status,
   });
