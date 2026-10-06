@@ -1,33 +1,21 @@
-import {
-  Image,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-  ActivityIndicator,
-  TextInput,
-  Alert,
-} from "react-native";
-
+import { useCallback, useEffect, useState } from "react";
+import { useFocusEffect } from "@react-navigation/native";
+import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { router } from "expo-router";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { useEffect, useState } from "react";
 
 import BottomNav from "../../components/BottomNav";
 import { BrandHeader } from "../../components/ui/BrandHeader";
 import Colors from "../../styles/colors";
 
-import {
-  getStoredUser,
-  type User,
-} from "../../services/auth";
-
+import { getStoredUser, type User } from "../../services/auth";
 import { updateUser } from "../../services/api";
+import { clearToken } from "../../services/tokenStore";
 
 export default function ProfileScreen() {
-
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -36,108 +24,34 @@ export default function ProfileScreen() {
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("");
 
-  // ======================================
-  // CARGAR USUARIO
-  // ======================================
-
-  useEffect(() => {
-
-    const loadUser = async () => {
-
-      try {
-
-        const storedUser = await getStoredUser();
-
-        setUser(storedUser);
-
-        if (storedUser) {
-          setName(storedUser.name);
-          setEmail(storedUser.email);
-          setRole(storedUser.role);
-        }
-
-      } catch (error) {
-
-        console.error(
-          "Error loading profile:",
-          error
-        );
-
-      } finally {
-
-        setLoading(false);
-
-      }
-    };
-
-    loadUser();
-
-  }, []);
-
-  // ======================================
-  // EDITAR
-  // ======================================
-
-  const startEditing = () => {
-
-    if (!user) return;
-
-    setName(user.name);
-    setEmail(user.email);
-    setRole(user.role);
-
-    setEditing(true);
-  };
-
-  // ======================================
-  // CANCELAR
-  // ======================================
-
-  const cancelEditing = () => {
-
-    if (!user) return;
-
-    setName(user.name);
-    setEmail(user.email);
-    setRole(user.role);
-
-    setEditing(false);
-  };
-
-  // ======================================
-  // GUARDAR
-  // ======================================
-
-  const saveProfile = async () => {
-
-    if (!user) return;
-
-    if (!name.trim()) {
-      Alert.alert(
-        "Invalid name",
-        "Please enter your name."
-      );
-      return;
-    }
-
-    if (!email.trim()) {
-      Alert.alert(
-        "Invalid email",
-        "Please enter your email."
-      );
-      return;
-    }
-
-    if (!role) {
-      Alert.alert(
-        "Invalid role",
-        "Please select a role."
-      );
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      setLoading(true);
+      getStoredUser()
+        .then((data) => {
+          if (cancelled) return;
+          setUser(data);
+          setName(data?.name ?? "");
+          setEmail(data?.email ?? "");
+          setRole((data as any)?.role ?? "");
+          setError("");
+        })
+        .catch(() => {
+          if (!cancelled) setError("Could not load profile");
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
+      return () => {
+        cancelled = true;
+      };
+    }, [])
+  );
       return;
     }
 
     try {
-
       setSaving(true);
 
       const updatedUser = await updateUser(
@@ -184,196 +98,6 @@ export default function ProfileScreen() {
     }
   };
 
-  // ======================================
-  // LOADING
-  // ======================================
-
-  if (loading) {
-
-    return (
-      <View style={styles.loadingContainer}>
-
-        <ActivityIndicator
-          size="small"
-          color={Colors.primary}
-        />
-
-      </View>
-    );
-
-  }
-
-  // ======================================
-  // SIN USUARIO
-  // ======================================
-
-  if (!user) {
-
-    return (
-      <View style={styles.container}>
-
-        <BrandHeader />
-
-        <View style={styles.emptyContainer}>
-
-          <MaterialCommunityIcons
-            name="account-alert-outline"
-            size={48}
-            color={Colors.textSecondary}
-          />
-
-          <Text style={styles.emptyTitle}>
-            No user session
-          </Text>
-
-          <Text style={styles.emptyText}>
-            Unable to load the current user.
-          </Text>
-
-        </View>
-
-        <BottomNav />
-
-      </View>
-    );
-
-  }
-
-  // ======================================
-  // PERFIL
-  // ======================================
-
-  const avatarUrl = user.avatarUrl;
-
-  return (
-
-    <View style={styles.container}>
-
-      <BrandHeader />
-
-      <ScrollView
-        contentContainerStyle={styles.content}
-        keyboardShouldPersistTaps="handled"
-      >
-
-        {/* =========================
-            AVATAR
-        ========================= */}
-
-        <View style={styles.profileHeader}>
-
-          <View style={styles.avatarWrap}>
-
-            {avatarUrl ? (
-
-              <Image
-                source={{
-                  uri: avatarUrl,
-                }}
-                style={styles.avatarImage}
-              />
-
-            ) : (
-
-              <View
-                style={styles.avatarPlaceholder}
-              >
-
-                <MaterialCommunityIcons
-                  name="account"
-                  size={56}
-                  color={Colors.textSecondary}
-                />
-
-              </View>
-
-            )}
-
-            <TouchableOpacity
-              style={styles.avatarEditBadge}
-            >
-
-              <MaterialCommunityIcons
-                name="camera"
-                size={14}
-                color="#fff"
-              />
-
-            </TouchableOpacity>
-
-          </View>
-
-          {!editing ? (
-
-            <>
-              <Text style={styles.name}>
-                {user.name}
-              </Text>
-
-              <Text style={styles.role}>
-                {user.role}
-              </Text>
-
-              <TouchableOpacity
-                style={styles.editButton}
-                onPress={startEditing}
-              >
-
-                <MaterialCommunityIcons
-                  name="pencil"
-                  size={16}
-                  color={Colors.primary}
-                />
-
-                <Text style={styles.editButtonText}>
-                  Edit Profile
-                </Text>
-
-              </TouchableOpacity>
-            </>
-
-          ) : (
-
-            <Text style={styles.editingTitle}>
-              Edit Profile
-            </Text>
-
-          )}
-
-        </View>
-
-        {/* =========================
-            EDIT FORM
-        ========================= */}
-
-        {editing ? (
-
-          <View style={styles.card}>
-
-            <Text style={styles.sectionTitle}>
-              Profile Information
-            </Text>
-
-            {/* NAME */}
-
-            <Text style={styles.inputLabel}>
-              Name
-            </Text>
-
-            <TextInput
-              style={styles.input}
-              value={name}
-              onChangeText={setName}
-              placeholder="Name"
-              placeholderTextColor={Colors.textSecondary}
-            />
-
-            {/* EMAIL */}
-
-            <Text style={styles.inputLabel}>
-              Email
-            </Text>
-
             <TextInput
               style={styles.input}
               value={email}
@@ -384,195 +108,59 @@ export default function ProfileScreen() {
               keyboardType="email-address"
             />
 
-            {/* ROLE */}
+{editing ? (
 
-            <Text style={styles.inputLabel}>
-              Role
-            </Text>
+  <View style={styles.card}>
 
-            <View style={styles.roleSelector}>
+    <Text style={styles.sectionTitle}>Profile Information</Text>
 
-              <TouchableOpacity
-                style={[
-                  styles.roleOption,
-                  role === "OPERATOR" &&
-                    styles.roleOptionSelected,
-                ]}
-                onPress={() => setRole("OPERATOR")}
-              >
+    <Text style={styles.inputLabel}>Name</Text>
+    <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Name" placeholderTextColor={Colors.textSecondary} />
 
-                <MaterialCommunityIcons
-                  name="account-hard-hat"
-                  size={18}
-                  color={
-                    role === "OPERATOR"
-                      ? Colors.primary
-                      : Colors.textSecondary
-                  }
-                />
+    <Text style={styles.inputLabel}>Email</Text>
+    <TextInput style={styles.input} value={email} onChangeText={setEmail} placeholder="Email" placeholderTextColor={Colors.textSecondary} autoCapitalize="none" keyboardType="email-address" />
 
-                <Text
-                  style={[
-                    styles.roleOptionText,
-                    role === "OPERATOR" &&
-                      styles.roleOptionTextSelected,
-                  ]}
-                >
-                  OPERATOR
-                </Text>
+    <Text style={styles.inputLabel}>Role</Text>
+    <View style={styles.roleSelector}>
+      <TouchableOpacity style={[styles.roleOption, role === "OPERATOR" && styles.roleOptionSelected]} onPress={() => setRole("OPERATOR")}>
+        <MaterialCommunityIcons name="account-hard-hat" size={18} color={role === "OPERATOR" ? Colors.primary : Colors.textSecondary} />
+        <Text style={[styles.roleOptionText, role === "OPERATOR" && styles.roleOptionTextSelected]}>OPERATOR</Text>
+      </TouchableOpacity>
 
-              </TouchableOpacity>
+      <TouchableOpacity style={[styles.roleOption, role === "ADMIN" && styles.roleOptionSelected]} onPress={() => setRole("ADMIN")}>
+        <MaterialCommunityIcons name="shield-account" size={18} color={role === "ADMIN" ? Colors.primary : Colors.textSecondary} />
+        <Text style={[styles.roleOptionText, role === "ADMIN" && styles.roleOptionTextSelected]}>ADMIN</Text>
+      </TouchableOpacity>
+    </View>
 
-              <TouchableOpacity
-                style={[
-                  styles.roleOption,
-                  role === "ADMIN" &&
-                    styles.roleOptionSelected,
-                ]}
-                onPress={() => setRole("ADMIN")}
-              >
+    <View style={styles.actionRow}>
+      <TouchableOpacity style={styles.cancelButton} onPress={cancelEditing} disabled={saving}><Text style={styles.cancelButtonText}>Cancel</Text></TouchableOpacity>
+      <TouchableOpacity style={styles.saveButton} onPress={saveProfile} disabled={saving}>{saving ? <ActivityIndicator size="small" color="#fff" /> : (<><MaterialCommunityIcons name="check" size={17} color="#fff" /><Text style={styles.saveButtonText}>Save Changes</Text></>)}</TouchableOpacity>
+    </View>
 
-                <MaterialCommunityIcons
-                  name="shield-account"
-                  size={18}
-                  color={
-                    role === "ADMIN"
-                      ? Colors.primary
-                      : Colors.textSecondary
-                  }
-                />
+  </View>
 
-                <Text
-                  style={[
-                    styles.roleOptionText,
-                    role === "ADMIN" &&
-                      styles.roleOptionTextSelected,
-                  ]}
-                >
-                  ADMIN
-                </Text>
+) : (
 
-              </TouchableOpacity>
+  <View style={styles.card}>
 
-            </View>
+    <Text style={styles.sectionTitle}>Account Details</Text>
 
-            {/* BOTONES */}
+    <View style={styles.row}><Text style={styles.label}>Email</Text><Text style={styles.value} numberOfLines={1} ellipsizeMode="tail">{user.email}</Text></View>
+    <View style={styles.divider} />
 
-            <View style={styles.actionRow}>
+    <View style={styles.row}><Text style={styles.label}>Role</Text><Text style={styles.value}>{user.role}</Text></View>
+    <View style={styles.divider} />
 
-              <TouchableOpacity
-                style={styles.cancelButton}
-                onPress={cancelEditing}
-                disabled={saving}
-              >
+    <View style={styles.row}><Text style={styles.label}>User ID</Text><Text style={styles.value}>#{user.id}</Text></View>
 
-                <Text style={styles.cancelButtonText}>
-                  Cancel
-                </Text>
+    <TouchableOpacity style={styles.editButton} onPress={startEditing}><MaterialCommunityIcons name="pencil" size={16} color={Colors.primary} /><Text style={styles.editButtonText}>Edit Profile</Text></TouchableOpacity>
 
-              </TouchableOpacity>
+  </View>
 
-              <TouchableOpacity
-                style={styles.saveButton}
-                onPress={saveProfile}
-                disabled={saving}
-              >
+)}
 
-                {saving ? (
-
-                  <ActivityIndicator
-                    size="small"
-                    color="#fff"
-                  />
-
-                ) : (
-
-                  <>
-                    <MaterialCommunityIcons
-                      name="check"
-                      size={17}
-                      color="#fff"
-                    />
-
-                    <Text style={styles.saveButtonText}>
-                      Save Changes
-                    </Text>
-                  </>
-
-                )}
-
-              </TouchableOpacity>
-
-            </View>
-
-          </View>
-
-        ) : (
-
-          /* =========================
-              ACCOUNT DETAILS
-          ========================= */
-
-          <View style={styles.card}>
-
-            <Text style={styles.sectionTitle}>
-              Account Details
-            </Text>
-
-            {/* EMAIL */}
-
-            <View style={styles.row}>
-
-              <Text style={styles.label}>
-                Email
-              </Text>
-
-              <Text
-                style={styles.value}
-                numberOfLines={1}
-                ellipsizeMode="tail"
-              >
-                {user.email}
-              </Text>
-
-            </View>
-
-            <View style={styles.divider} />
-
-            {/* ROLE */}
-
-            <View style={styles.row}>
-
-              <Text style={styles.label}>
-                Role
-              </Text>
-
-              <Text style={styles.value}>
-                {user.role}
-              </Text>
-
-            </View>
-
-            <View style={styles.divider} />
-
-            {/* USER ID */}
-
-            <View style={styles.row}>
-
-              <Text style={styles.label}>
-                User ID
-              </Text>
-
-              <Text style={styles.value}>
-                #{user.id}
-              </Text>
-
-            </View>
-
-          </View>
-
-        )}
-
+<TouchableOpacity style={styles.logoutButton} onPress={handleLogout}><MaterialCommunityIcons name="logout" size={18} color={Colors.danger} /><Text style={styles.logoutButtonText}>Log Out</Text></TouchableOpacity>
       </ScrollView>
 
       <BottomNav />
@@ -591,6 +179,18 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.background,
+    paddingTop: 60,
+  },
+
+  centered: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+
+  emptyState: {
+    flex: 1,
+    gap: 10,
   },
 
   loadingContainer: {
@@ -701,6 +301,22 @@ const styles = StyleSheet.create({
     color: Colors.primary,
     fontWeight: "600",
     fontSize: 13,
+  },
+
+  avatarWrap: {
+    alignItems: "center",
+    marginBottom: 20,
+  },
+
+  avatarPlaceholder: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: Colors.card,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: "center",
+    justifyContent: "center",
   },
 
   card: {
@@ -830,4 +446,77 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
 
+  input: {
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 10,
+    padding: 10,
+    marginTop: 4,
+    color: Colors.text,
+    backgroundColor: Colors.background,
+  },
+
+  editButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    marginTop: 20,
+    paddingVertical: 10,
+  },
+
+  editButtonText: {
+    color: Colors.primary,
+    fontWeight: "600",
+  },
+
+  editActions: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 20,
+  },
+
+  cancelButton: {
+    flex: 1,
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: "center",
+  },
+
+  cancelButtonText: {
+    color: Colors.textSecondary,
+    fontWeight: "600",
+  },
+
+  saveButton: {
+    flex: 1,
+    padding: 12,
+    borderRadius: 10,
+    backgroundColor: Colors.primary,
+    alignItems: "center",
+  },
+
+  saveButtonText: {
+    color: "#fff",
+    fontWeight: "700",
+  },
+
+  logoutButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    marginTop: 24,
+    padding: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.danger,
+  },
+
+  logoutButtonText: {
+    color: Colors.danger,
+    fontWeight: "700",
+  },
 });

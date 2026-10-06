@@ -65,6 +65,7 @@ export default function BottomNav() {
 
 const styles = StyleSheet.create({
   container: {
+    width: "100%",
     height: 85,
     backgroundColor: Colors.card,
     borderTopWidth: 1,

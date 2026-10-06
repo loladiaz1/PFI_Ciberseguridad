@@ -17,8 +17,8 @@ _(Actualizar el estado; el detalle va en las entradas de sesión de abajo.)_
 | Fase 0 — Spike de riesgo (bloqueo vía API Wazuh) | ✅ Listo | Revalidado el 21/08 contra infra recreada de cero (ver sesión). El eslabón crítico sigue funcionando. |
 | Fase 1 — Camino feliz backend | ✅ Listo | Webhook conectado a Wazuh real (`ossec.conf` + `integrations/custom-microsoar`). Un brute-force SSH real crea el incidente solo, sin inyección manual — confirmado el 26/08. |
 | Fase 2 — App consumiendo | ✅ Listo | Login, lista, detalle y bloqueo probados de punta a punta desde un celular real, por Tailscale, contra el orchestrator en AWS. |
-| Fase 3 — Step-up + enriquecimiento | 🟡 En progreso | Step-up con biometría real (`expo-local-authentication`) probado y funcionando. Falta enriquecimiento VT/AbuseIPDB y audit log (`activity.tsx` sigue con datos mock). |
-| Fase 4 — Hardening y ensayo | 🟡 En progreso | Security group del orchestrator confirmado cerrado (puerto 8000 solo por Tailscale, no por IP pública). Falta: video de respaldo, ensayo cronometrado. |
+| Fase 3 — Step-up + enriquecimiento | 🟡 En progreso | Step-up con biometría real funcionando. Audit log real agregado (`GET /api/v1/audit`, `activity.tsx` conectado — 30/08). Falta solo el enriquecimiento VT/AbuseIPDB. |
+| Fase 4 — Hardening y ensayo | 🟡 En progreso | Security group del orchestrator confirmado cerrado (puerto 8000 solo por Tailscale, no por IP pública). Rate limiting de `/auth/login` ajustado a 20 intentos/15min (30/08, ver errores). Falta: video de respaldo, ensayo cronometrado. |
 
 Leyenda: ⬜ Pendiente · 🟡 En progreso · ✅ Listo · 🔴 Bloqueado
 
@@ -43,6 +43,10 @@ _(Antes de reintentar algo, revisar esta sección. No repetir fallas.)_
 | 2026-08-26 | `terraform plan` con las 3 instancias `stopped`, después de un cambio no relacionado (el SG del punto anterior) | El plan quería **reemplazar las 3 instancias** (`associate_public_ip_address = false -> true # forces replacement`) — casi se aplica sin mirar el detalle. | `associate_public_ip_address` solo aplica al lanzar la instancia; con la instancia parada (sin IP pública en ese momento), la API de AWS lo devuelve `false` y Terraform lo interpreta como drift real. Se agregó `lifecycle { ignore_changes = [associate_public_ip_address] }` a las 3 `aws_instance` — fix permanente, si no iba a repetirse cada vez que se toque Terraform con las instancias paradas (que es el hábito de ahorro de costo del equipo). |
 | 2026-08-26 | Subir `orchestrator/integrations/custom-microsoar` y `.py` al manager (`scp` + `chown root:wazuh` + `chmod 750`, mismo patrón que `slack`/`pagerduty` ya instalados) | `wazuh-integratord: ERROR: Couldn't execute command (...). Check file and permissions.` — mensaje genérico, no decía la causa real. | Los dos archivos tenían fin de línea CRLF (Windows) en el repo. El shebang quedaba `#!/bin/sh\r`, un intérprete que no existe — el kernel no puede hacer `exec()`. Confirmado con `cat -A`. Corregido con `sed -i 's/\r$//'` en ambos archivos, y agregado `.gitattributes` (`orchestrator/integrations/* text eol=lf`, `*.sh text eol=lf`) para que no vuelva a pasar en un checkout futuro en Windows. |
 | 2026-08-26 | Primer intento de brute-force real (loop de `ssh` con `PubkeyAuthentication=no` contra la víctima) para probar la integración | La regla compuesta de fuerza bruta de Wazuh (`5712`, nivel 10) nunca disparó — la app nunca vio el incidente. | La AMI de Ubuntu deshabilita `PasswordAuthentication` por default (`/etc/ssh/sshd_config.d/60-cloudimg-settings.conf`). Sin eso, sshd cierra la conexión en preauth sin generar líneas `Failed password`, que es lo que necesita la regla `5712` (`frequency=8` de la regla `5710` en 120s, confirmado leyendo `/var/ossec/ruleset/rules/0095-sshd_rules.xml` directo en el manager). Se habilitó `PasswordAuthentication yes` en la víctima — seguro porque `ubuntu` no tiene ninguna password real seteada, nadie puede entrar de verdad igual. Es la víctima dedicada al brute-force del propio PLAN.md, tiene sentido que acepte el ataque. |
+| 2026-08-30 | `git checkout` a `unificacion-backend-frontend` (la branch de Lola, descartada el 24/08) seguido de un `git reset --hard origin/main` para "volver" | El reset borró silenciosamente todo el trabajo sin commitear de la sesión (rate limiting, `ruleDescription`, fecha en el detalle del incidente, `PLAN.md`/`README.md`) — un `checkout` a otra branch no avisa que un reset posterior va a descartar cambios sin commitear. Encima el HEAD quedó en un merge (`a9e35a4`) que había traído el backend paralelo de Lola sin la integración real de Wazuh, borrando `auth.js`/`db.js`/`normalize.js`/`wazuh.js`/tests de `orchestrator/src`. | Confirmado que `main` seguía intacto (el daño quedó contenido en la otra branch, nunca tocó `main`). Se volvió a `main` y se rehizo todo el trabajo perdido. Lección operativa: cualquier `git reset --hard` o cambio de branch en medio de una sesión hay que confirmarlo explícitamente antes de seguir — no asumir que "está todo igual" solo porque el directorio de trabajo parece el mismo. |
+| 2026-08-30 | Adoptar tal cual las pantallas de la branch de Lola (`confirm.tsx`, `loading.tsx`, `success.tsx`, `incident.tsx`, `incidents.tsx`) para traer su rediseño visual | Todas tenían regresiones serias a datos mock: `loading.tsx` tenía un `MOCK_SUCCESS = true` literal que nunca llama al backend; `success.tsx` esperaba parámetros (`ip`/`target`/`time`) distintos a los que le manda nuestro `loading.tsx` real (`srcIp`/`hostname`/`elapsedMs`), con fallback hardcodeado `"1.4 seconds"`; `confirm.tsx` e `incidents.tsx` mostraban una IP/host fijos sin llamar a ninguna API; `incident.tsx` esperaba el incidente entero serializado en el parámetro de navegación (`params.incident`), no por `id`. | Se portó solo lo visual (el componente `BrandHeader`, la marca "Fortia") manteniendo intacta toda la lógica de datos real ya validada. Las pantallas de login/registro sí se adaptaron completas porque eran genuinamente mejores (validación de password, mostrar/ocultar) y no tenían este problema — salvo que el login pedía email en vez de username, corregido antes de adoptarlo. |
+| 2026-08-30 | Login fallando con "Invalid credentials" en el celular pese a usar la password correcta | El mensaje era el mismo para *cualquier* error del `catch` — en realidad era un `429` (rate limit de `/auth/login` agotado en pruebas, 5 intentos/15min) mostrado con el texto de credenciales inválidas. | Ampliado el límite a 20 intentos/15min (sigue protegiendo contra fuerza bruta automatizada real, da margen para typos humanos) y diferenciado el mensaje de error en `index.tsx` según el status code (`429` vs `401` vs error de red) para que esto no vuelva a confundir. |
+| 2026-08-30 | Después de resolver lo del rate limit, el login seguía pidiéndose dos veces: la primera "cargaba" y volvía sola a la pantalla de login; recién la segunda vez quedaba adentro | Confirmado con el audit log del server: **ambos** intentos de login llegaban bien al backend y devolvían un token válido — el problema no era el login en sí. La causa real: `SecureStore.setItemAsync` en Android no garantiza que una lectura inmediatamente posterior (`getItemAsync`) ya vea el valor escrito — el `GET /incidents` que dispara el dashboard apenas navega ahí llegaba sin token, el backend devolvía `401`, y el interceptor de `http.ts` interpretaba eso como sesión inválida y mandaba de vuelta al login. | `services/tokenStore.ts` ahora guarda el token también en una variable en memoria (no solo en `SecureStore`) — la lectura inmediata post-login usa la memoria (sin la latencia del keystore encriptado), `SecureStore` queda solo para sobrevivir a un reinicio de la app. |
 
 ---
 
@@ -58,11 +62,103 @@ _(Cambios de rumbo respecto al PLAN, con el motivo. Para defender ante el tribun
 | 2026-08-21 | La instancia del orchestrator no se destruye/recrea junto con Wazuh y la víctima — se para y prende (`stop`/`start`) | Su identidad de Tailscale (IP `100.x.y.z`) vive en el disco de la instancia; recrearla la cambia y obliga a actualizar `AppMicroSOAR/.env` y limpiar el dispositivo viejo del admin console. `stop`/`start` la preserva. Wazuh y la víctima sí se pueden destruir/recrear libremente (no dependen de Tailscale). |
 | 2026-08-24 | `origin/unificacion-backend-frontend` (Lola) se descarta entera, no se mergea nada — ni siquiera pulido visual archivo por archivo. `test1` queda como única base. | `git merge-tree` (dry run) dio 0 conflictos textuales, pero la branch reimplementó lo mismo de forma incompatible: backend MVC propio sin la integración real de Wazuh (`AppMicroSOAR/backend/orchestrator/`), otra reestructuración de rutas de expo-router, y borra `services/{http,tokenStore}.ts` que `test1` sí usa. Un merge automático hubiera dejado dos backends y dos routings coexistiendo sin error visible. Ajustes de diseño se hacen después, a mano, sobre `test1`. Pendiente: avisarle a Lola para que no siga sumando commits en esa branch. |
 | 2026-08-26 | `PasswordAuthentication yes` habilitado en la víctima, en contra del hardening por default de la AMI | El PLAN.md asume un atacante que hace fuerza bruta de passwords (hydra o loop de `ssh`) contra esta VM específicamente dedicada a ese rol — sin login por password, Wazuh nunca ve `Failed password` y la regla de brute-force no dispara. Queda así para la demo (no es un fix temporal a revertir). Ver tabla de errores para el detalle de por qué hacía falta. |
+| 2026-08-30 | Se agregan modelos `User` y `AuditEvent` reales al backend (`GET/PUT /api/v1/me`, `GET /api/v1/audit`), en vez de dejar perfil/actividad como mock | Pedido explícito: "quiero que esté todo conectado, sin mocks". El perfil se resuelve con un `upsert` (no hace falta un endpoint de registro real, la fila se crea sola la primera vez que el usuario autenticado la pide) y el audit log se llena solo desde los puntos donde ya pasa algo real (login, incidente detectado, IP bloqueada). |
+| 2026-08-30 | Se adopta la marca visual "Fortia" (`BrandHeader`, colores, `app.json`) de la branch de Lola en todas las pantallas, pero **no** su lógica de datos | Es el mismo criterio del 24/08 (no mergear la branch entera) aplicado pantalla por pantalla en vez de a la branch completa: lo visual se separa de lo funcional, y solo lo primero se adopta cuando lo segundo tiene regresiones a mock. |
 
 ---
 
 ## Bitácora de sesiones
 _(La más reciente arriba. Formato fijo por entrada.)_
+
+### Sesión 2026-08-30 — Incidente de branch, backend reconstruido, "sin mocks", deploy y fix de login
+- **Objetivo de la sesión:** conectar todo lo que faltaba de la app a datos
+  reales (perfil, actividad, dashboard) e incorporar el trabajo de UI de
+  Lola con criterio, sin repetir el error de mergear su branch entera.
+- **Hecho:**
+  - **Incidente de git:** en medio de la sesión, el repo apareció parado en
+    `unificacion-backend-frontend` (la branch descartada el 24/08) con un
+    merge ya aplicado (`a9e35a4`) que había borrado `auth.js`, `db.js`,
+    `normalize.js`, `wazuh.js` y los tests de `orchestrator/src`,
+    reemplazándolos por el backend paralelo de Lola sin integración real de
+    Wazuh. Causa: un `checkout` a esa branch seguido de un
+    `git reset --hard origin/main` (del usuario, confirmado), que además
+    descartó en silencio todo el trabajo sin commitear de esta misma sesión
+    (rate limiting, `ruleDescription`, updates de `PLAN.md`/`README.md`).
+    Confirmado que `main` nunca se tocó — el daño quedó contenido en la otra
+    branch. Se volvió a `main` (con `git stash` de por medio para no perder
+    nada) y se rehizo todo el trabajo perdido desde cero.
+  - Backend: reconstruido rate limiting (`express-rate-limit`, `/auth/login`)
+    y `ruleDescription`. Agregado de cero: modelo `User` +
+    `GET/PUT /api/v1/me` (perfil real, se autocompleta con `upsert` la
+    primera vez que se pide, sin necesitar un endpoint de registro real);
+    modelo `AuditEvent` + `GET /api/v1/audit`, con registro automático en
+    login exitoso, incidente detectado y IP bloqueada. 15/15 tests en verde
+    (`tests/me.test.js`, `tests/audit.test.js` nuevos).
+  - Frontend reconectado a datos reales: `dashboard.tsx` (ya usaba
+    `getIncidents()`, se le sacaron las tarjetas inventadas "Assets"/
+    "Status" sin dato real detrás, "Threat Level" ahora sale de la
+    severidad máxima entre los incidentes abiertos), `profile.tsx`
+    (`getStoredUser`/`updateUser` reales, edición de nombre/email
+    funcional), `activity.tsx` (audit log real, reemplaza
+    `data/activity.ts`). Borrados `data/activity.ts` y `data/user.ts` —
+    no queda ningún mock de usuario/actividad en el repo.
+  - Revisada pantalla por pantalla la branch de Lola (`git diff --stat`
+    contra `main`, 29 archivos) para separar lo visual de lo funcional:
+    - **Descartado sin tocar:** `AppMicroSOAR/terraform/` y
+      `AppMicroSOAR/docs/` (copias duplicadas del `terraform/` y los `.md`
+      reales de la raíz — traerlos generaría dos infraestructuras/
+      documentaciones distintas), `app/biometric.tsx` (ya evaluado y
+      descartado el 24/08).
+    - **Adoptado completo:** `index.tsx` (login) y `register.tsx`
+      (validación de password, mostrar/ocultar, marca "Fortia") — el login
+      de Lola pedía email con validación de formato en vez de username, se
+      adaptó antes de traerlo porque si no nadie podía loguearse con el
+      usuario fijo real (`analyst`, no un email).
+    - **Solo el header (`BrandHeader`), lógica intacta:** `confirm.tsx`,
+      `loading.tsx`, `success.tsx`, `incident.tsx`, `incidents.tsx` — las
+      cinco tenían regresiones serias a datos mock en la branch de Lola
+      (`loading.tsx` con `MOCK_SUCCESS = true` literal, nunca llama al
+      backend; `success.tsx` esperaba parámetros distintos a los que le
+      manda nuestro `loading.tsx` real, con fallback hardcodeado
+      `"1.4 seconds"`; `confirm.tsx`/`incidents.tsx` con IP y host fijos
+      sin API; `incident.tsx` esperaba el incidente entero por parámetro de
+      navegación en vez de buscarlo por `id`). Adoptarlas tal cual hubiera
+      sido un retroceso a mock, exactamente lo que se estaba tratando de
+      sacar.
+    - **Chico y seguro:** `Header.tsx` (usa colores del tema), `colors.ts`
+      (fondo ajustado), `app.json` (agrega `expo-font` y
+      `expo-local-authentication` a los plugins — hace falta para que un
+      build de EAS configure bien Face ID y la tipografía).
+  - Deploy a AWS: instancias prendidas de nuevo, código nuevo empaquetado y
+    desplegado al orchestrator (mismo patrón `tar`+`scp`, `.env` existente
+    preservado), `npx prisma db push` remoto aplicó `User`/`AuditEvent` —
+    la base quedó limpia de cero (no había `soar.db` viejo en el paquete).
+    Confirmado en la instancia real: login, `GET /me`, `GET /audit` — los
+    tres funcionan.
+  - Bug post-deploy: el usuario no podía loguearse desde el celular,
+    "Invalid credentials" pese a la password correcta. Diagnóstico por
+    descarte (servidor probado directo por `curl`, funcionaba;
+    conectividad Tailscale confirmada pidiendo la API desde el navegador
+    del celular) hasta aislar la causa real: el rate limiter de
+    `/auth/login` (5 intentos/15min) ya estaba agotado por las pruebas, y
+    el `catch` de `index.tsx` mostraba el mismo texto genérico para
+    cualquier error. Reiniciar el proceso resetea el contador (vive en
+    memoria) — confirmado que eso lo resolvía. Ampliado a 20 intentos y
+    diferenciado el mensaje de error (`429` vs `401` vs error de red) para
+    que no vuelva a confundir, tanto en local como redeployado a AWS.
+- **En progreso / a medias:** —
+- **Errores encontrados:** ver tabla de arriba (el incidente de git, las
+  regresiones a mock de la branch de Lola, el rate limit disfrazado de
+  credenciales inválidas).
+- **Próximo paso concreto:** actualizar `BITACORA_DESARROLLO.md` y
+  `ARQUITECTURA_TECNICA.md` con lo de esta sesión (en curso). Después:
+  video de respaldo y ensayo cronometrado — sigue siendo lo único que no se
+  hizo todavía de cara al 1/9.
+- **Estado de instancias AWS:** las 3 quedaron **running** al cierre de
+  esta sesión (se prendieron para el deploy y las pruebas) — pararlas si no
+  se sigue trabajando enseguida.
+
+---
 
 ### Sesión 2026-08-26 — Webhook real de Wazuh conectado, primera detección automática end-to-end
 - **Objetivo de la sesión:** cerrar el único pendiente real de la Fase 1 —
@@ -127,9 +223,8 @@ _(La más reciente arriba. Formato fijo por entrada.)_
 - **Próximo paso concreto:** ajustes de UI pendientes; después, video de
   respaldo y ensayo cronometrado. `PLAN.md` sigue sin actualizar la fecha
   de deadline (18/08 → 1/9).
-- **Estado de instancias AWS:** las 3 quedaron **running** al cierre de
-  esta sesión (se habían prendido para esta prueba) — pararlas antes de
-  cortar si no se sigue trabajando enseguida.
+- **Estado de instancias AWS:** las 3 quedaron **stopped** al cierre de
+  esta sesión (se habían prendido para esta prueba y luego se frenaron)
 
 ---
 

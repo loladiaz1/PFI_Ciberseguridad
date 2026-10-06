@@ -128,8 +128,17 @@ export default function RegisterScreen() {
       // --------------------------------------
       // REGISTRO CORRECTO
       // --------------------------------------
+      // El registro es mock (no hay endpoint real todavia), asi que no
+      // guarda una sesion valida -- mandar a /dashboard aca terminaba
+      // rebotando solo al login en cuanto cualquier pantalla pedia datos
+      // autenticados. Mandamos al login de una, con el mensaje correcto.
 
-      router.replace("/dashboard");
+      Alert.alert(
+        "Account created",
+        "Please log in with your new account."
+      );
+
+      router.replace("/");
 
     } catch (error) {
 
@@ -148,14 +157,6 @@ export default function RegisterScreen() {
       if (error instanceof Error) {
         message = error.message;
       }
-
-      /*
-       * IMPORTANTE:
-       *
-       * El error del backend NO se vuelve a lanzar.
-       * Lo capturamos acá y mostramos solamente
-       * nuestro mensaje de FORTIA.
-       */
 
       Alert.alert(
         "Registration failed",

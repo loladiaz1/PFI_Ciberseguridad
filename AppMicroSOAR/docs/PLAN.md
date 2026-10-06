@@ -1,7 +1,10 @@
 # PLAN.md — Micro-SOAR MVP (Demo de 5 minutos)
 
 > Documento de trabajo vivo. Lo editamos a medida que avanzamos.
-> Deadline de desarrollo: **18 de agosto de 2026**. Equipo: 2 personas.
+> Deadline de desarrollo: ~~18 de agosto de 2026~~ **1 de septiembre de
+> 2026** (movido — la infra de AWS se destruyó por completo el 06/08 y hubo
+> que reconstruir todo desde cero; detalle en `progress.md`, sesión 21/08).
+> Equipo: 2 personas.
 > Alcance: **Opción A recortada** (un solo flujo, contundente).
 
 ---
@@ -35,14 +38,14 @@ Todo lo que no sostenga este flujo es secundario para la demo.
 ## 4. Alcance
 
 ### Entra (imprescindible)
-- [ ] Wazuh detecta brute-force SSH (reglas nativas, cero desarrollo de reglas)
-- [ ] Webhook Wazuh → orquestador
-- [ ] Orquestador normaliza a `Incident` y persiste (PostgreSQL)
-- [ ] App lista la alerta y muestra el detalle
-- [ ] Botón "Bloquear IP" con step-up (biometría/PIN)
-- [ ] Orquestador ejecuta el bloqueo vía API de Wazuh
-- [ ] El bloqueo se ve (la conexión del atacante se corta en pantalla)
-- [ ] Comunicación app↔orquestador por Tailscale (no IP pública)
+- [x] Wazuh detecta brute-force SSH (reglas nativas, cero desarrollo de reglas)
+- [x] Webhook Wazuh → orquestador
+- [x] Orquestador normaliza a `Incident` y persiste (SQLite hoy; Postgres es cambiar `DATABASE_URL`, no urgente para la demo)
+- [x] App lista la alerta y muestra el detalle
+- [x] Botón "Bloquear IP" con step-up (biometría/PIN)
+- [x] Orquestador ejecuta el bloqueo vía API de Wazuh
+- [x] El bloqueo se ve (la conexión del atacante se corta en pantalla)
+- [x] Comunicación app↔orquestador por Tailscale (no IP pública)
 
 ### Entra si sobra tiempo (si no, va al video / a preguntas)
 - [ ] Enriquecimiento VT/AbuseIPDB **cacheado** (respuesta precargada de la IP de ataque)
@@ -119,34 +122,35 @@ Modelo `Incident` canónico (interno, NO la alerta cruda de Wazuh):
 > Fases solapadas a propósito: A=backend/infra, B=app Android.
 > Criterio de "listo" = verificable, no "parece que anda".
 
-### Fase 0 — Spike de riesgo (4–5 ago)
-- [ ] (A) Terraform apply, Wazuh instalado
-- [ ] (A) **Bloqueo de IP vía API de Wazuh desde curl** ← decide todo
-- [ ] (B) Esqueleto app (login + lista vacía)
-- [ ] (Ambos) Fijar contrato de API
+### Fase 0 — Spike de riesgo (4–5 ago) — ✅ Listo
+- [x] (A) Terraform apply, Wazuh instalado
+- [x] (A) **Bloqueo de IP vía API de Wazuh desde curl** ← decide todo
+- [x] (B) Esqueleto app (login + lista vacía)
+- [x] (Ambos) Fijar contrato de API
 - **Listo cuando:** desde curl logro que Wazuh dropee una IP.
 
-### Fase 1 — Camino feliz backend (6–9 ago)
-- [ ] Webhook recibe alerta de Wazuh, normaliza a `Incident`, persiste
-- [ ] `GET /incidents` devuelve alertas reales
-- [ ] `POST .../block-ip` bloquea de verdad
+### Fase 1 — Camino feliz backend (6–9 ago → cerrada 26/08) — ✅ Listo
+- [x] Webhook recibe alerta de Wazuh, normaliza a `Incident`, persiste
+- [x] `GET /incidents` devuelve alertas reales
+- [x] `POST .../block-ip` bloquea de verdad
 - **Listo cuando:** un brute-force real aparece por la API y un POST lo bloquea.
+  Confirmado 26/08: un brute-force real crea el incidente solo, sin inyección manual.
 
-### Fase 2 — App consumiendo (8–12 ago, solapado)
-- [ ] Login JWT
-- [ ] Lista de alertas reales + detalle
-- [ ] Botón de bloqueo (sin step-up todavía)
+### Fase 2 — App consumiendo (8–12 ago → cerrada 21/08) — ✅ Listo
+- [x] Login JWT
+- [x] Lista de alertas reales + detalle
+- [x] Botón de bloqueo (con step-up ya incluido, ver Fase 3)
 - **Listo cuando:** desde el celular veo la alerta y bloqueo, end-to-end por Tailscale.
 
-### Fase 3 — Step-up + enriquecimiento (12–14 ago)
-- [ ] Biometría/PIN antes de la acción crítica
+### Fase 3 — Step-up + enriquecimiento (12–14 ago) — 🟡 En progreso
+- [x] Biometría/PIN antes de la acción crítica
 - [ ] Enriquecimiento VT/AbuseIPDB cacheado
 - [ ] Audit log
 - **Listo cuando:** la acción pide biometría y la alerta muestra contexto de la IP.
 
-### Fase 4 — Hardening y ensayo (15–18 ago)
-- [ ] Instrumentar tiempos (timestamp alerta vs acción)
-- [ ] Cerrar security groups, revisar exposición
+### Fase 4 — Hardening y ensayo (15–18 ago → extendido a 1 sep) — 🟡 En progreso
+- [x] Instrumentar tiempos (timestamp alerta vs acción — `elapsedMs` en la app)
+- [x] Cerrar security groups, revisar exposición (puerto 8000 confirmado no expuesto a internet)
 - [ ] **Video de respaldo** del flujo completo
 - [ ] **Ensayar 3× cronometrado** (< 5 min)
 - **Listo cuando:** corro la demo entera en < 5 min sin salirme del guion.
@@ -174,9 +178,9 @@ Si algo se atrasa, se recorta en este orden:
 | Algo se rompe cerca del 18 | AMI de respaldo para restaurar en minutos |
 
 ## 11. Definición de "demo exitosa"
-- [ ] El bloqueo se ve (antes/después del atacante en pantalla)
-- [ ] El step-up es real (biometría/PIN de verdad)
-- [ ] El tráfico va por Tailscale (demostrable)
-- [ ] Se muestra el número: segundos vs 8–14 min
-- [ ] Corre en < 5 minutos
+- [x] El bloqueo se ve (antes/después del atacante en pantalla)
+- [x] El step-up es real (biometría/PIN de verdad)
+- [x] El tráfico va por Tailscale (demostrable)
+- [x] Se muestra el número: segundos vs 8–14 min (`elapsedMs` real en la pantalla de éxito)
+- [ ] Corre en < 5 minutos (falta ensayar cronometrado)
 - [ ] Hay video de respaldo

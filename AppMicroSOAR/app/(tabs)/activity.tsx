@@ -1,11 +1,21 @@
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useCallback, useState } from "react";
+import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useFocusEffect } from "@react-navigation/native";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 
 import BottomNav from '../../components/BottomNav';
 import { BrandHeader } from '../../components/ui/BrandHeader';
 import { Header } from '../../components/Header';
 import { activitySeed } from '../../data/activity';
+import { getAuditEvents } from '../../services/api';
 import Colors from '../../styles/colors';
+import type { ActivityItem } from '../../types';
+
+const ICONS: Record<string, keyof typeof MaterialCommunityIcons.glyphMap> = {
+  login: "login",
+  incident_detected: "shield-alert",
+  ip_blocked: "shield-lock",
+};
 
 // Heurística simple para darle un ícono y color distinto a cada tipo de evento
 // según palabras clave en el título. Si más adelante activitySeed trae un campo
@@ -38,28 +48,77 @@ function getActivityVisual(title: string): {
   };
 }
 
+
 export default function ActivityScreen() {
+  const [events, setEvents] = useState<ActivityItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      setLoading(true);
+      getAuditEvents()
+        .then((data) => {
+          if (!cancelled) setEvents(data);
+        })
+        .catch(() => {
+          if (!cancelled) setError("Could not load activity");
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
+      return () => {
+        cancelled = true;
+      };
+    }, [])
+  );
+
   return (
     <View style={styles.container}>
       <BrandHeader />
-
-      <Header
-        title="Activity"
-        subtitle="Recent system events"
-      />
+      <Header title="Activity" subtitle="Recent system events" />
 
       <ScrollView contentContainerStyle={styles.content}>
-        {activitySeed.length === 0 ? (
-          <View style={styles.emptyState}>
-            <MaterialCommunityIcons
-              name="history"
-              size={48}
-              color={Colors.textSecondary}
-            />
+        {loading && <ActivityIndicator size="large" style={styles.spinner} />}
+        {error ? <Text style={styles.error}>{error}</Text> : null}
+        {!loading && !error && events.length === 0 && (
+          <Text style={styles.empty}>No recent activity yet.</Text>
+        )}
 
-            <Text style={styles.emptyText}>
-              No recent activity yet
-            </Text>
+        {events.length > 0 ? (
+          events.map((item) => (
+            <View key={item.id} style={styles.card}>
+              <MaterialCommunityIcons
+                name={ICONS[item.type] ?? "bell-outline"}
+                size={20}
+                color={Colors.primary}
+                style={styles.icon}
+              />
+              <View style={styles.textBlock}>
+                <Text style={styles.title}>{item.detail}</Text>
+                <Text style={styles.time}>{new Date(item.createdAt).toLocaleString()}</Text>
+              </View>
+            </View>
+          ))
+        ) : (
+          activitySeed.map((item, index) => {
+            const v = getActivityVisual(item.title);
+            return (
+              <View key={index} style={[styles.card, styles.cardSpacing]}>
+                <View style={[styles.iconBadge, { backgroundColor: v.color }]}> 
+                  <MaterialCommunityIcons name={v.icon} size={20} color="#fff" />
+                </View>
+
+                <View style={styles.textBlock}>
+                  <Text style={styles.title}>{item.title}</Text>
+                  <Text style={styles.time}>{item.time}</Text>
+                </View>
+              </View>
+            );
+          })
+        )}
+
           </View>
         ) : (
           activitySeed.map((item, index) => {
@@ -113,6 +172,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.background,
+    paddingTop: 60,
   },
 
   content: {
@@ -120,9 +180,21 @@ const styles = StyleSheet.create({
     paddingBottom: 110,
   },
 
+  spinner: {
+    marginTop: 30,
+  },
+
+  error: {
+    color: Colors.danger,
+  },
+
+  empty: {
+    color: Colors.textSecondary,
+  },
+
   card: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: Colors.card,
     padding: 14,
     borderRadius: 14,
@@ -140,6 +212,12 @@ const styles = StyleSheet.create({
     borderRadius: 19,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: Colors.card,
+  },
+
+  icon: {
+    marginRight: 12,
+  },
     marginRight: 12,
   },
 
@@ -157,6 +235,7 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     fontSize: 12,
     marginLeft: 10,
+    marginTop: 2,
   },
 
   emptyState: {

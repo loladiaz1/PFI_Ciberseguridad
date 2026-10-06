@@ -5,6 +5,7 @@ export interface Incident {
   source: string;
   ruleId: string;
   severity: number;
+  ruleDescription: string | null;
   srcIp: string;
   hostname: string;
   agentId: string;
@@ -14,13 +15,15 @@ export interface Incident {
 }
 
 export interface ActivityItem {
-  id: string;
-  title: string;
-  timestamp: string;
+  id: number;
+  type: string;
+  detail: string;
+  createdAt: string;
 }
 
 export interface UserProfile {
-  id: string;
+  id: number;
+  username: string;
   name: string;
   email: string;
   role: string;

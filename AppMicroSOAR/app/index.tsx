@@ -1,45 +1,23 @@
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  Pressable,
-  StyleSheet,
-  Image,
-  Alert,
-} from "react-native";
+import { View, Text, TextInput, TouchableOpacity, Pressable, StyleSheet, Image } from "react-native";
 import { router } from "expo-router";
 import { useState } from "react";
-
+import { isAxiosError } from "axios";
 import Colors from "../styles/colors";
 import { signIn } from "../services/auth";
 
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // =========================
-  // VALIDACIONES
-  // =========================
-
-  const emailValid =
-    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-
-  const passwordValid =
-    password.length > 0;
-
-  const hasStartedTyping =
-    email.length > 0 || password.length > 0;
-
-  const loginFormValid =
-    emailValid && passwordValid;
-
-  // =========================
-  // LOGIN
-  // =========================
+  const usernameValid = username.trim().length > 0;
+  const passwordValid = password.length > 0;
+  const hasStartedTyping = username.length > 0 || password.length > 0;
+  const loginFormValid = usernameValid && passwordValid;
 
   const login = async () => {
 
@@ -60,47 +38,16 @@ export default function LoginScreen() {
     }
 
     try {
-      setLoading(true);
-
-      const result = await signIn(
-        email.trim().toLowerCase(),
-        password
-      );
-
-      console.log(
-        "Usuario autenticado:",
-        result.user
-      );
-
-      console.log(
-        "Token recibido:",
-        result.token
-      );
-
-      // Biometric authentication temporarily disabled
-      // for testing purposes.
-
+      await signIn(username.trim(), password);
       router.replace("/dashboard");
-
-    } catch (error) {
-
-      console.error(
-        "Login error:",
-        error
-      );
-
-      let message =
-        "Unable to connect to the server.";
-
-      if (error instanceof Error) {
-        message = error.message;
+    } catch (err) {
+      if (isAxiosError(err) && err.response?.status === 429) {
+        setError("Too many attempts. Please wait a few minutes and try again.");
+      } else if (isAxiosError(err) && err.response?.status === 401) {
+        setError("Invalid credentials");
+      } else {
+        setError("Unable to connect to the server");
       }
-
-      Alert.alert(
-        "Login failed",
-        message
-      );
-
     } finally {
       setLoading(false);
     }
@@ -112,38 +59,59 @@ export default function LoginScreen() {
       {/* LOGO */}
 
       <View style={styles.logo}>
-
         <Image
           source={require("../assets/images/logo.png")}
           style={styles.logoImage}
           resizeMode="contain"
         />
-
-        <Text style={styles.title}>
-          FORTIA
-        </Text>
-
+        <Text style={styles.title}>FORTIA</Text>
+        <Text style={styles.subtitle}>Security Operations Center</Text>
       </View>
 
       {/* FORMULARIO */}
 
       <View style={styles.formSection}>
 
-        {/* EMAIL */}
-
         <TextInput
-          placeholder="example@company.com"
+          placeholder="Username"
           placeholderTextColor={Colors.border}
           style={styles.input}
-          value={email}
-          onChangeText={setEmail}
+          value={username}
+          onChangeText={setUsername}
           autoCapitalize="none"
-          keyboardType="email-address"
         />
 
-        {/* PASSWORD */}
-
         <View style={styles.passwordContainer}>
+          <TextInput
+            placeholder="Password"
+            placeholderTextColor={Colors.border}
+            secureTextEntry={!showPassword}
+            style={styles.passwordInput}
+            value={password}
+            onChangeText={setPassword}
+            autoCapitalize="none"
+          />
+          <Pressable style={styles.eyeButton} onPress={() => setShowPassword(!showPassword)}>
+            <Text style={styles.eyeIcon}>{showPassword ? "◉" : "◌"}</Text>
+          </Pressable>
+        </View>
+
+        {hasStartedTyping && (
+          <View style={styles.validationBox}>
+            <ValidationRow text="Username entered" valid={usernameValid} visible={username.length > 0} />
+            <ValidationRow text="Password entered" valid={passwordValid} visible={password.length > 0} />
+          </View>
+        )}
+
+        {error ? <Text style={styles.error}>{error}</Text> : null}
+
+        <TouchableOpacity
+          style={[styles.loginButton, !loginFormValid && styles.loginButtonDisabled]}
+          onPress={login}
+          disabled={loading}
+        >
+          <Text style={styles.loginText}>{loading ? "LOGGING IN..." : "LOGIN"}</Text>
+        </TouchableOpacity>
 
           <TextInput
             placeholder="Password"
@@ -222,74 +190,37 @@ export default function LoginScreen() {
   );
 }
 
-
-// ======================================
-// COMPONENTE DE VALIDACIÓN
-// ======================================
-
 type ValidationRowProps = {
   text: string;
   valid: boolean;
   visible: boolean;
 };
 
-function ValidationRow({
-  text,
-  valid,
-  visible,
-}: ValidationRowProps) {
-
-  if (!visible) {
-    return null;
-  }
+function ValidationRow({ text, valid, visible }: ValidationRowProps) {
+  if (!visible) return null;
 
   return (
     <View style={styles.validationRow}>
-
-      <View
-        style={[
-          styles.validationIcon,
-          valid
-            ? styles.validationSuccess
-            : styles.validationError,
-        ]}
-      >
-        <Text style={styles.validationIconText}>
-          {valid ? "✓" : "×"}
-        </Text>
+      <View style={[styles.validationIcon, valid ? styles.validationSuccess : styles.validationError]}>
+        <Text style={styles.validationIconText}>{valid ? "✓" : "×"}</Text>
       </View>
-
-      <Text
-        style={[
-          styles.validationText,
-          valid
-            ? styles.validationTextSuccess
-            : styles.validationTextError,
-        ]}
-      >
-        {text}
-      </Text>
-
+      <Text style={[styles.validationText, valid ? styles.validationTextSuccess : styles.validationTextError]}>{text}</Text>
     </View>
   );
 }
-
-
-// ======================================
-// ESTILOS
-// ======================================
 
 const styles = StyleSheet.create({
 
   container: {
     flex: 1,
     backgroundColor: Colors.background,
+    justifyContent: "center",
   },
 
   logo: {
     alignItems: "center",
     paddingTop: 60,
-    paddingBottom: 12,
+    paddingBottom: 40,
   },
 
   logoImage: {
@@ -305,13 +236,14 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
 
+  subtitle: {
+    color: Colors.textSecondary,
+    marginTop: 6,
+  },
+
   formSection: {
     paddingHorizontal: 24,
   },
-
-  // ======================================
-  // INPUTS
-  // ======================================
 
   input: {
     borderWidth: 1,
@@ -322,10 +254,6 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.card,
     color: Colors.text,
   },
-
-  // ======================================
-  // PASSWORD + OJITO
-  // ======================================
 
   passwordContainer: {
     flexDirection: "row",
@@ -354,10 +282,6 @@ const styles = StyleSheet.create({
     fontSize: 20,
     color: Colors.border,
   },
-
-  // ======================================
-  // VALIDACIONES
-  // ======================================
 
   validationBox: {
     backgroundColor: "#2A2A2A",
@@ -412,9 +336,77 @@ const styles = StyleSheet.create({
     color: "#FF8A80",
   },
 
-  // ======================================
-  // LOGIN
-  // ======================================
+  loginButton: {
+    backgroundColor: Colors.primary,
+    padding: 14,
+    borderRadius: 10,
+    alignItems: "center",
+    marginTop: 4,
+  },
+
+  loginButtonDisabled: {
+    opacity: 0.65,
+  },
+
+  loginText: {
+    color: Colors.text,
+    fontWeight: "700",
+    fontSize: 16,
+  },
+  },
+
+  validationBox: {
+    backgroundColor: "#2A2A2A",
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "#3A3A3A",
+  },
+
+  validationRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginVertical: 2,
+  },
+
+  validationIcon: {
+    width: 15,
+    height: 15,
+    borderRadius: 8,
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 7,
+  },
+
+  validationSuccess: {
+    backgroundColor: "#32CD65",
+  },
+
+  validationError: {
+    backgroundColor: "#E74C3C",
+  },
+
+  validationIconText: {
+    color: "#FFFFFF",
+    fontSize: 10,
+    fontWeight: "900",
+    lineHeight: 14,
+  },
+
+  validationText: {
+    fontSize: 11,
+    fontWeight: "500",
+  },
+
+  validationTextSuccess: {
+    color: "#7EE69A",
+  },
+
+  validationTextError: {
+    color: "#FF8A80",
+  },
 
   loginButton: {
     backgroundColor: Colors.primary,
@@ -438,6 +430,12 @@ const styles = StyleSheet.create({
     textAlign: "center",
     paddingVertical: 20,
     color: Colors.primary,
+  },
+
+  error: {
+    color: Colors.danger,
+    textAlign: "center",
+    marginBottom: 10,
   },
 
 });

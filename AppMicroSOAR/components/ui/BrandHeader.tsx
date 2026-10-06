@@ -8,7 +8,7 @@ type BrandHeaderProps = {
   logoSize?: number;
 };
 
-export function BrandHeader({ logoSize = 140 }: BrandHeaderProps) {
+export function BrandHeader({ logoSize = 64 }: BrandHeaderProps) {
   const [fontsLoaded] = useFonts({
     Roboto_700Bold,
   });
@@ -16,9 +16,7 @@ export function BrandHeader({ logoSize = 140 }: BrandHeaderProps) {
   return (
     <View style={styles.container}>
       <BrandLogo showText={false} size={logoSize} />
-      <Text style={[styles.brandName, fontsLoaded && styles.brandNameRoboto]}>
-        Fortia
-      </Text>
+      <Text style={[styles.brandName, fontsLoaded && styles.brandNameRoboto]}>Fortia</Text>
     </View>
   );
 }
@@ -28,16 +26,14 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     alignSelf: "flex-start",
-    marginTop: -10,
-    marginLeft: -24,
-    marginBottom: 8,
+    paddingHorizontal: 20,
+    gap: 10,
   },
 
   brandName: {
-    fontSize: 22,
-    fontWeight: "bold",
-    color: Colors.primary,
-    marginLeft: 4,
+    fontSize: 20,
+    fontWeight: "700",
+    color: Colors.text,
   },
 
   brandNameRoboto: {

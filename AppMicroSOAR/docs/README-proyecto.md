@@ -17,14 +17,18 @@ Leer en este orden:
 ## Estructura del repo
 
 ```
-terraform/       # infra AWS (Wazuh manager + víctima). Ver terraform/terraform.tfvars.example
-orchestrator/     # backend Node.js/Express: webhook Wazuh -> Incident -> DB (Prisma)
+terraform/        # infra AWS (Wazuh manager + víctima + orchestrator). Ver terraform/terraform.tfvars.example
+orchestrator/      # backend Node.js/Express: webhook Wazuh -> Incident -> DB (Prisma)
+AppMicroSOAR/      # app móvil Expo/React Native: login, incidentes, step-up biométrico, bloqueo
 ```
 
 ## Estado actual (ver detalle y próximo paso en `progress.md`)
 
-- **Fase 0** (bloqueo de IP vía API de Wazuh): ✅ confirmado contra infraestructura real — `block_ip.js` bloquea una IP de verdad (regla `DROP` verificada en `iptables`).
-- **Fase 1** (webhook → normalización → persistencia → listado): funcionando en local contra un mock de alerta, con tests en verde. Falta conectarlo a Wazuh real.
+- **Fase 0** (bloqueo de IP vía API de Wazuh): ✅ confirmado contra infraestructura real — el bloqueo dropea una IP de verdad (regla `DROP` verificada en `iptables`).
+- **Fase 1** (webhook → normalización → persistencia → listado): ✅ conectado a Wazuh real — un brute-force SSH real crea el incidente solo, sin inyección manual.
+- **Fase 2** (app consumiendo): ✅ login, lista, detalle y bloqueo probados de punta a punta desde un celular real, por Tailscale.
+- **Fase 3** (step-up + enriquecimiento): 🟡 step-up biométrico real ya funciona; enriquecimiento y audit log siguen pendientes (opcionales).
+- **Fase 4** (hardening y ensayo): 🟡 security groups cerrados y confirmados; falta video de respaldo y ensayo cronometrado antes de la demo del 1/9.
 
 ## Orchestrator — cómo levantarlo
 

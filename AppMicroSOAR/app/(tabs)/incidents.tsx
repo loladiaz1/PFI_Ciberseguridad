@@ -3,7 +3,7 @@ import { router } from "expo-router";
 import { useCallback, useState } from "react";
 import { useFocusEffect } from "@react-navigation/native";
 import Colors from "@/styles/colors";
-import { BrandLogo } from "@/components/BrandLogo";
+import { BrandHeader } from "@/components/ui/BrandHeader";
 import { getIncidents } from "@/services/api";
 import { severityLabel } from "@/utils/severity";
 import type { Incident } from "@/types";
@@ -36,7 +36,7 @@ export default function IncidentsList() {
     return (
         <View style={styles.container}>
             <ScrollView>
-                <BrandLogo showText={false} />
+                <BrandHeader />
 
                 <Text style={styles.title}>Incidents</Text>
 
