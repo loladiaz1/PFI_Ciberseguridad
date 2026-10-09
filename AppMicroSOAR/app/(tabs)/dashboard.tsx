@@ -37,7 +37,7 @@ useFocusEffect(
 const recent = incidents.slice(0, 3);
 const openIncidents = incidents.filter((i) => i.status === "new");
 const openCount = openIncidents.length;
-const blockedCount = incidents.filter((i) => i.status === "blocked").length;
+const mitigatedCount = incidents.filter((i) => i.status === "blocked" || i.status === "isolated").length;
 
 const highestOpenSeverity = openIncidents.reduce(
     (max, i) => Math.max(max, i.severity),
@@ -94,11 +94,11 @@ Incidents
 <View style={styles.smallCard}>
 
 <Text style={styles.number}>
-{blockedCount}
+{mitigatedCount}
 </Text>
 
 <Text style={styles.label}>
-Blocked
+Mitigated
 </Text>
 
 </View>
@@ -141,7 +141,7 @@ onPress={()=>router.push({ pathname: "/incident", params: { id: String(item.id) 
 
 >
 
-<View>
+<View style={styles.info}>
 
 <Text style={styles.incidentTitle}>
 
@@ -149,9 +149,9 @@ onPress={()=>router.push({ pathname: "/incident", params: { id: String(item.id) 
 
 </Text>
 
-<Text style={styles.server}>
+<Text style={styles.server} numberOfLines={1}>
 
-{item.srcIp}
+{item.srcIp ?? item.ruleDescription}
 
 </Text>
 
@@ -281,6 +281,11 @@ borderRadius:18,
 flexDirection:"row",
 justifyContent:"space-between",
 alignItems:"center"
+},
+
+info:{
+flex:1,
+marginRight:12
 },
 
 incidentTitle:{

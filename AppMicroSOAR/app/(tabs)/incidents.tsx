@@ -54,9 +54,12 @@ export default function IncidentsList() {
                             style={styles.incident}
                             onPress={() => router.push({ pathname: "/incident", params: { id: String(incident.id) } })}
                         >
-                            <View>
+                            <View style={styles.info}>
                                 <Text style={styles.incidentTitle}>{incident.hostname}</Text>
-                                <Text style={styles.server}>{incident.srcIp}</Text>
+                                {/* CU-02 (malware en el host) no tiene IP atacante */}
+                                <Text style={styles.server} numberOfLines={1}>
+                                    {incident.srcIp ?? incident.ruleDescription}
+                                </Text>
                             </View>
 
                             <View style={styles.badges}>
@@ -113,6 +116,11 @@ const styles = StyleSheet.create({
         flexDirection: "row",
         justifyContent: "space-between",
         alignItems: "center",
+    },
+
+    info: {
+        flex: 1,
+        marginRight: 12,
     },
 
     incidentTitle: {

@@ -13,6 +13,7 @@ const ICONS: Record<string, keyof typeof MaterialCommunityIcons.glyphMap> = {
   login: "login",
   incident_detected: "shield-alert",
   ip_blocked: "shield-lock",
+  host_isolated: "lan-disconnect",
 };
 
 export default function ActivityScreen() {

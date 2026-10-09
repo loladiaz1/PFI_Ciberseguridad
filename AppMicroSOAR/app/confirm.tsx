@@ -6,10 +6,11 @@ import BottomNav from "../components/BottomNav";
 import { BrandHeader } from "../components/ui/BrandHeader";
 import { getIncidentById } from "../services/api";
 import { severityLabel } from "../utils/severity";
-import type { Incident } from "../types";
+import type { Incident, MitigationAction } from "../types";
 
 export default function ConfirmScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, action } = useLocalSearchParams<{ id: string; action: MitigationAction }>();
+  const isIsolate = action === "isolate-host";
   const [incident, setIncident] = useState<Incident | null>(null);
 
   useEffect(() => {
@@ -44,13 +45,17 @@ export default function ConfirmScreen() {
         </Text>
 
         <Text style={styles.subtitle}>
-          You are about to block the following IP
+          {isIsolate ? "You are about to isolate the following host" : "You are about to block the following IP"}
         </Text>
 
         <View style={styles.card}>
 
-          <Text style={styles.label}>Attacker IP</Text>
-          <Text style={styles.value}>{incident.srcIp}</Text>
+          {incident.srcIp ? (
+            <>
+              <Text style={styles.label}>Attacker IP</Text>
+              <Text style={styles.value}>{incident.srcIp}</Text>
+            </>
+          ) : null}
 
           <Text style={styles.label}>Target</Text>
           <Text style={styles.value}>{incident.hostname}</Text>
@@ -61,18 +66,20 @@ export default function ConfirmScreen() {
         </View>
 
         <Text style={styles.warning}>
-          This action will update the firewall rules and block the attacker.
+          {isIsolate
+            ? "This action will cut all network traffic of the host, except its channel to the Wazuh manager."
+            : "This action will update the firewall rules and block the attacker."}
         </Text>
 
         <TouchableOpacity
           style={styles.button}
           onPress={() => router.push({
             pathname: "/loading",
-            params: { id: String(incident.id), srcIp: incident.srcIp, hostname: incident.hostname },
+            params: { id: String(incident.id), action, srcIp: incident.srcIp ?? "", hostname: incident.hostname },
           })}
         >
           <Text style={styles.buttonText}>
-            BLOCK IP
+            {isIsolate ? "ISOLATE HOST" : "BLOCK IP"}
           </Text>
         </TouchableOpacity>
 

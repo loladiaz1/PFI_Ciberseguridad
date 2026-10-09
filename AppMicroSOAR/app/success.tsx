@@ -5,14 +5,17 @@ import { useFonts, Roboto_600SemiBold, Roboto_700Bold } from "@expo-google-fonts
 import Colors from "../styles/colors";
 import BottomNav from "../components/BottomNav";
 import { BrandHeader } from "../components/ui/BrandHeader";
+import type { MitigationAction } from "../types";
 
 export default function SuccessScreen(){
 
-const { srcIp, hostname, elapsedMs } = useLocalSearchParams<{
+const { action, srcIp, hostname, elapsedMs } = useLocalSearchParams<{
+    action: MitigationAction;
     srcIp: string;
     hostname: string;
     elapsedMs: string;
 }>();
+const isIsolate = action === "isolate-host";
 
 const [fontsLoaded] = useFonts({ Roboto_600SemiBold, Roboto_700Bold });
 
@@ -38,11 +41,15 @@ Mitigation Completed
 </Text>
 
 <Text style={styles.subtitle}>
-The malicious IP has been successfully blocked.
+{isIsolate
+    ? "The host has been isolated from the network."
+    : "The malicious IP has been successfully blocked."}
 </Text>
 
 <View style={styles.card}>
 
+{isIsolate ? null : (
+<>
 <Text style={styles.label}>
 Blocked IP
 </Text>
@@ -50,9 +57,11 @@ Blocked IP
 <Text style={[styles.value, fontsLoaded && styles.valueRoboto]}>
 {srcIp}
 </Text>
+</>
+)}
 
 <Text style={styles.label}>
-Target
+{isIsolate ? "Isolated Host" : "Target"}
 </Text>
 
 <Text style={[styles.value, fontsLoaded && styles.valueRoboto]}>

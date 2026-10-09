@@ -7,7 +7,11 @@ import { BrandHeader } from "../components/ui/BrandHeader";
 import { MaterialIcons } from "@expo/vector-icons";
 import { getIncidentById } from "../services/api";
 import { severityLabel } from "../utils/severity";
-import type { Incident } from "../types";
+import type { Incident, MitigationAction } from "../types";
+
+// Formas que guarda orchestrator/src/enrichment.js (JSON.stringify).
+type VtStats = { malicious: number; suspicious: number; harmless: number };
+type AbuseStats = { abuseConfidenceScore: number; totalReports: number; countryCode: string | null };
 
 export default function IncidentDetail() {
     const { id } = useLocalSearchParams<{ id: string }>();
@@ -48,6 +52,13 @@ export default function IncidentDetail() {
     }
 
     const severity = severityLabel(incident.severity);
+    const action: MitigationAction = incident.srcIp ? "block-ip" : "isolate-host";
+    const actionLabel = action === "block-ip" ? "BLOCK IP" : "ISOLATE HOST";
+    const vt: VtStats | null = incident.enrichmentVt ? JSON.parse(incident.enrichmentVt) : null;
+    const abuse: AbuseStats | null = incident.enrichmentAbuseIpdb ? JSON.parse(incident.enrichmentAbuseIpdb) : null;
+    const mitigatedAt = incident.status === "blocked" ? incident.blockedAt
+        : incident.status === "isolated" ? incident.isolatedAt
+        : null;
 
     return (
         <View style={styles.container}>
@@ -77,8 +88,12 @@ export default function IncidentDetail() {
                     <Text style={styles.label}>Target</Text>
                     <Text style={styles.value}>{incident.hostname}</Text>
 
-                    <Text style={styles.label}>Attacker IP</Text>
-                    <Text style={styles.value}>{incident.srcIp}</Text>
+                    {incident.srcIp ? (
+                        <>
+                            <Text style={styles.label}>Attacker IP</Text>
+                            <Text style={styles.value}>{incident.srcIp}</Text>
+                        </>
+                    ) : null}
 
                     <Text style={styles.label}>Agent</Text>
                     <Text style={styles.value}>{incident.agentId}</Text>
@@ -88,11 +103,41 @@ export default function IncidentDetail() {
 
                 </View>
 
-                {incident.status === "blocked" ? (
+                {incident.srcIp ? (
+                    <View style={styles.intel}>
+                        <Text style={styles.intelTitle}>Threat Intelligence</Text>
+
+                        {!vt && !abuse ? (
+                            <Text style={styles.recText}>No threat intelligence available for this IP yet.</Text>
+                        ) : null}
+
+                        {vt ? (
+                            <>
+                                <Text style={styles.label}>VirusTotal</Text>
+                                <Text style={[styles.value, vt.malicious > 0 && { color: Colors.danger }]}>
+                                    {vt.malicious} malicious · {vt.suspicious} suspicious · {vt.harmless} harmless
+                                </Text>
+                            </>
+                        ) : null}
+
+                        {abuse ? (
+                            <>
+                                <Text style={styles.label}>AbuseIPDB</Text>
+                                <Text style={[styles.value, abuse.abuseConfidenceScore >= 50 && { color: Colors.danger }]}>
+                                    {abuse.abuseConfidenceScore}% abuse confidence · {abuse.totalReports} reports
+                                    {abuse.countryCode ? ` · ${abuse.countryCode}` : ""}
+                                </Text>
+                            </>
+                        ) : null}
+                    </View>
+                ) : null}
+
+                {mitigatedAt ? (
                     <View style={styles.recommendation}>
                         <Text style={styles.recTitle}>Already mitigated</Text>
                         <Text style={styles.recText}>
-                            This IP was blocked at {incident.blockedAt}.
+                            {incident.status === "blocked" ? "This IP was blocked" : "This host was isolated"} at{" "}
+                            {new Date(mitigatedAt).toLocaleString()}.
                         </Text>
                     </View>
                 ) : (
@@ -100,18 +145,19 @@ export default function IncidentDetail() {
                         <View style={styles.recommendation}>
                             <Text style={styles.recTitle}>Automatic Recommendation</Text>
                             <Text style={styles.recText}>
-                                This IP triggered a {severity.label.toLowerCase()} severity rule
-                                against {incident.hostname}.
+                                {action === "block-ip"
+                                    ? `This IP triggered a ${severity.label.toLowerCase()} severity rule against ${incident.hostname}.`
+                                    : `${incident.hostname} triggered a ${severity.label.toLowerCase()} severity rule. Isolating it cuts all its network traffic except the Wazuh manager channel.`}
                             </Text>
                             <Text style={styles.recText}>Recommended action:</Text>
-                            <Text style={styles.block}>BLOCK IP</Text>
+                            <Text style={styles.block}>{actionLabel}</Text>
                         </View>
 
                         <TouchableOpacity
                             style={styles.button}
-                            onPress={() => router.push({ pathname: "/auth", params: { id: String(incident.id) } })}
+                            onPress={() => router.push({ pathname: "/auth", params: { id: String(incident.id), action } })}
                         >
-                            <Text style={styles.buttonText}>BLOCK IP</Text>
+                            <Text style={styles.buttonText}>{actionLabel}</Text>
                         </TouchableOpacity>
                     </>
                 )}
@@ -189,6 +235,22 @@ const styles = StyleSheet.create({
         marginLeft: 8,
         fontWeight: "bold",
         fontSize: 22
+    },
+
+    intel: {
+        backgroundColor: Colors.card,
+        padding: 20,
+        borderRadius: 16,
+        marginTop: 25,
+        borderWidth: 1,
+        borderColor: Colors.border
+    },
+
+    intelTitle: {
+        fontWeight: "bold",
+        fontSize: 18,
+        marginBottom: 10,
+        color: Colors.text
     },
 
     recommendation: {

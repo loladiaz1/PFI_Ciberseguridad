@@ -23,6 +23,18 @@ export const blockIncidentIp = async (id: number): Promise<BlockIpResult> => {
   return data;
 };
 
+export interface IsolateHostResult {
+  incidentId: number;
+  hostname: string;
+  agentId: string;
+  status: string;
+}
+
+export const isolateIncidentHost = async (id: number): Promise<IsolateHostResult> => {
+  const { data } = await http.post<IsolateHostResult>(`/api/v1/incidents/${id}/actions/isolate-host`);
+  return data;
+};
+
 export const updateUser = async (fields: { name: string; email: string }): Promise<UserProfile> => {
   const { data } = await http.put<UserProfile>('/api/v1/me', fields);
   return data;

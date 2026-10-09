@@ -4,24 +4,29 @@ import { router, useLocalSearchParams } from "expo-router";
 import Colors from "../styles/colors";
 import BottomNav from "../components/BottomNav";
 import { BrandHeader } from "../components/ui/BrandHeader";
-import { blockIncidentIp } from "../services/api";
+import { blockIncidentIp, isolateIncidentHost } from "../services/api";
+import type { MitigationAction } from "../types";
 
 // Solo cosmetico -- va revelando un mensaje a la vez mientras se espera la
 // respuesta real de la API. No determina cuando navega: eso lo decide
-// unicamente blockIncidentIp() resolviendo o rechazando de verdad.
+// unicamente la llamada real a la API resolviendo o rechazando de verdad.
 const STEP_DELAY = 600;
 
 export default function LoadingScreen(){
 
-const { id, srcIp, hostname } = useLocalSearchParams<{ id: string; srcIp: string; hostname: string }>();
+const { id, action, srcIp, hostname } = useLocalSearchParams<{
+    id: string;
+    action: MitigationAction;
+    srcIp: string;
+    hostname: string;
+}>();
+const isIsolate = action === "isolate-host";
 const [error, setError] = useState("");
 const [visibleStep, setVisibleStep] = useState(0);
 
-const steps = [
-    "Connecting to Wazuh...",
-    `Blocking ${srcIp}...`,
-    "Updating firewall...",
-];
+const steps = isIsolate
+    ? ["Connecting to Wazuh...", `Isolating ${hostname}...`, "Cutting network access..."]
+    : ["Connecting to Wazuh...", `Blocking ${srcIp}...`, "Updating firewall..."];
 
 useEffect(() => {
     if (visibleStep >= steps.length - 1) return;
@@ -36,16 +41,18 @@ if (!id) return;
 
 const start = Date.now();
 
-blockIncidentIp(Number(id))
-    .then((result) => {
+const mitigate = isIsolate ? isolateIncidentHost : blockIncidentIp;
+
+mitigate(Number(id))
+    .then(() => {
         const elapsedMs = Date.now() - start;
         router.replace({
             pathname: "/success",
-            params: { srcIp: result.srcIp, hostname, elapsedMs: String(elapsedMs) },
+            params: { action, srcIp, hostname, elapsedMs: String(elapsedMs) },
         });
     })
     .catch(() => {
-        setError("Wazuh rejected the block command. Try again.");
+        setError(`Wazuh rejected the ${isIsolate ? "isolation" : "block"} command. Try again.`);
     });
 
 // eslint-disable-next-line react-hooks/exhaustive-deps -- solo se ejecuta una vez, al montar
