@@ -167,11 +167,13 @@ Si algo se atrasa, se recorta en este orden:
 - [x] Roles OIDC (CI solo-lectura / deploy restringido a `main`) e instance profile SSM aplicados
 - [x] State de Terraform reconstruido (`terraform import`) y AMI fijado
 - [x] Bucket S3 del state creado (07/10, `micro-soar-tfstate-530390084140`, lock nativo `use_lockfile`, sin DynamoDB) y backend declarado en `versions.tf`
-- [ ] Migrar el state local al bucket (`terraform init -migrate-state`) — **bloqueante**
-- [ ] `terraform apply` local para dar al rol de deploy lectura de IAM + acceso al bucket
+- [x] State local migrado al bucket (08/10)
+- [x] `terraform apply` local: rol de deploy con lectura de IAM + acceso al bucket (08/10)
 - [x] Workflows reciben las variables de Terraform por Secrets/Variables y fallan si falta el AMI fijo (07/10)
-- [ ] Cargar en GitHub: variables `GITHUB_ACTIONS_*_ROLE_ARN`, `TF_UBUNTU_AMI_ID`, `SSH_PUBLIC_KEY`; secret `TF_MY_IP`; Environment `production` con aprobadores
-- [ ] Migrar `~/orchestrator` de la instancia a un clone de git en `/home/ubuntu/PFI_Ciberseguridad` (con `.env` y `prisma/soar.db` copiados, pm2 `orchestrator` apuntando a su subcarpeta `orchestrator/`)
+- [x] Variables y secrets cargados en GitHub (08/10)
+- [ ] Environment `production` con aprobadores en GitHub — **bloqueante antes de mergear a `main`**
+- [x] `~/orchestrator` migrado a clone de git en `/home/ubuntu/PFI_Ciberseguridad` (08/10; `.env` con `chmod 600`, pm2 `orchestrator` corriendo desde `orchestrator/`). La carpeta vieja `~/orchestrator` queda de respaldo hasta el primer deploy exitoso.
+- [ ] PR de prueba a `main`: CI en verde y plan con `No changes`
 - **Listo cuando:** un merge a `main` pide aprobación, aplica Terraform sin reemplazar instancias, y deploya el orchestrator sin SSH.
 
 ## 9. Diseño para escalar (cuesta casi lo mismo ahora)

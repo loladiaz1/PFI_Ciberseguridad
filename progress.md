@@ -104,7 +104,18 @@ _(La más reciente arriba. Formato fijo por entrada.)_
   - **BLOCK IP por el flujo nuevo** (parámetro `action`): bloqueo real confirmado (`Test-NetConnection` al 22 de la víctima → `False`).
 - **En progreso / a medias:** la sesión SSH abierta se cortó al aislar, aunque el script deja pasar conexiones establecidas — causa no determinada. Sin endpoint/UI para revertir el aislamiento (hoy solo reboot).
 - **Errores encontrados:** `isolate-host.sh` con extensión vs `!isolate-host` en la API; mensaje engañoso de `iptables -S` con nf_tables; `nc` al 22 desde el manager no sirve para probar (lo corta el SG). Ver tabla.
-- **Próximo paso concreto:** commits + push de la branch, migrar `~/orchestrator` a clone de git, PR de prueba a `main`. Evaluar bloqueo de perímetro vía Network ACL como segundo responder (alternativa a firewall/EDL, ver conversación del 08/10).
+  - Commits `df24385` (app) y `0776471` (CI/CD + docs) pusheados a `feature/cu02-enrichment-backend`.
+  - **Orchestrator migrado a clone de git** en `/home/ubuntu/PFI_Ciberseguridad` (branch `feature/cu02-enrichment-backend`): `npm ci --omit=dev` instaló Prisma 5.22.0 (fix de `dependencies` confirmado), `.env` y `soar.db` copiados (`.env` ahora `600`, antes `644`), `prisma db push` → "already in sync", pm2 `orchestrator` corriendo desde la carpeta nueva y `pm2 save` hecho. `~/orchestrator` viejo queda de respaldo.
+  - `npm audit` en el orchestrator reporta 6 vulnerabilidades (1 crítica, 1 alta) — pendiente revisar en local antes de `npm audit fix`.
+  - Migración confirmada desde el celular: la app ve los incidentes de siempre contra el orchestrator nuevo.
+- **Próximo paso concreto:** PR de prueba a `main` (CI en verde, plan `No changes`); crear el Environment `production` antes de mergear.
+- **Agenda de la próxima sesión (planteos de arquitectura y producto):**
+  1. Base de datos gestionada en AWS (hoy SQLite en el disco del orchestrator) — RDS Postgres vs alternativas, costo, y cómo defenderlo.
+  2. Infra más escalable, para ahora o como trabajo futuro defendible en las presentaciones.
+  3. Firewall de perímetro: Network ACL vía API como segundo responder vs firewall real (OPNsense/FortiGate) vs EDL.
+  4. Ideas innovadoras para el proyecto final de ingeniería.
+  5. Disponibilidad de la solución (hoy un solo orchestrator, una sola AZ).
+  6. UI/UX: destellos blancos al cambiar de pantalla, y otros errores de interfaz.
 - **Estado de instancias AWS:** las 3 **running** — pararlas al terminar.
 
 ---
