@@ -27,7 +27,7 @@ AppMicroSOAR/      # app móvil Expo/React Native: login, incidentes, step-up bi
 - **Fase 0** (bloqueo de IP vía API de Wazuh): ✅ confirmado contra infraestructura real — el bloqueo dropea una IP de verdad (regla `DROP` verificada en `iptables`).
 - **Fase 1** (webhook → normalización → persistencia → listado): ✅ conectado a Wazuh real — un brute-force SSH real crea el incidente solo, sin inyección manual.
 - **Fase 2** (app consumiendo): ✅ login, lista, detalle y bloqueo probados de punta a punta desde un celular real, por Tailscale.
-- **Fase 3** (step-up + enriquecimiento): 🟡 step-up biométrico real ya funciona; enriquecimiento y audit log siguen pendientes (opcionales).
+- **Fase 3** (step-up + enriquecimiento): ✅ step-up biométrico, audit log y enriquecimiento VT/AbuseIPDB funcionando (backend), confirmado contra APIs reales el 02/10.
 - **Fase 4** (hardening y ensayo): 🟡 security groups cerrados y confirmados; falta video de respaldo y ensayo cronometrado antes de la demo del 1/9.
 
 ## Orchestrator — cómo levantarlo

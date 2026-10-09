@@ -48,15 +48,15 @@ Todo lo que no sostenga este flujo es secundario para la demo.
 - [x] Comunicación app↔orquestador por Tailscale (no IP pública)
 
 ### Entra si sobra tiempo (si no, va al video / a preguntas)
-- [ ] Enriquecimiento VT/AbuseIPDB **cacheado** (respuesta precargada de la IP de ataque)
-- [ ] Audit log visible en la app
+- [x] Enriquecimiento VT/AbuseIPDB **cacheado** (02/10 — implementado y validado contra APIs reales; UI agregada 06/10, falta probarla en celular)
+- [x] Audit log visible en la app
 
 ### Fuera del MVP (trabajo futuro, para la defensa)
 - Geo-context / impossible travel
 - Módulo de IA / triaje ML
 - Redis (instalado por el bootstrap, no integrado — "se activa al escalar")
-- Four-Eyes, aislamiento de host, phishing
-- Segundo escenario de PoC
+- Four-Eyes, phishing
+- ~~Aislamiento de host~~ (CU-02): detección real funcionando de punta a punta (02/10, ver `progress.md`); la acción de aislamiento está escrita y deployada pero sin probar contra Wazuh real todavía; UI agregada 06/10 sin probar en celular — sigue sin estar "listo para demo"
 
 ## 5. Arquitectura de la demo
 
@@ -142,11 +142,12 @@ Modelo `Incident` canónico (interno, NO la alerta cruda de Wazuh):
 - [x] Botón de bloqueo (con step-up ya incluido, ver Fase 3)
 - **Listo cuando:** desde el celular veo la alerta y bloqueo, end-to-end por Tailscale.
 
-### Fase 3 — Step-up + enriquecimiento (12–14 ago) — 🟡 En progreso
+### Fase 3 — Step-up + enriquecimiento (12–14 ago → cerrada 02/10) — ✅ Listo
 - [x] Biometría/PIN antes de la acción crítica
-- [ ] Enriquecimiento VT/AbuseIPDB cacheado
-- [ ] Audit log
+- [x] Enriquecimiento VT/AbuseIPDB cacheado (backend validado; UI agregada 06/10, falta probarla en celular)
+- [x] Audit log
 - **Listo cuando:** la acción pide biometría y la alerta muestra contexto de la IP.
+  Confirmado 02/10: enriquecimiento validado contra APIs reales (ver `progress.md`).
 
 ### Fase 4 — Hardening y ensayo (15–18 ago → extendido a 1 sep) — 🟡 En progreso
 - [x] Instrumentar tiempos (timestamp alerta vs acción — `elapsedMs` en la app)
@@ -160,6 +161,18 @@ Si algo se atrasa, se recorta en este orden:
 1. Enriquecimiento en vivo → al video
 2. Audit log visible → a preguntas
 3. Step-up es **irrenunciable** (es medio diferencial). No se recorta.
+
+### CI/CD — deploy automático (agregado 05/10) — 🟡 En progreso
+- [x] Workflows `ci.yml` (plan + tests en PRs) y `deploy.yml` (apply gateado + deploy SSM en push a `main`)
+- [x] Roles OIDC (CI solo-lectura / deploy restringido a `main`) e instance profile SSM aplicados
+- [x] State de Terraform reconstruido (`terraform import`) y AMI fijado
+- [x] Bucket S3 del state creado (07/10, `micro-soar-tfstate-530390084140`, lock nativo `use_lockfile`, sin DynamoDB) y backend declarado en `versions.tf`
+- [ ] Migrar el state local al bucket (`terraform init -migrate-state`) — **bloqueante**
+- [ ] `terraform apply` local para dar al rol de deploy lectura de IAM + acceso al bucket
+- [x] Workflows reciben las variables de Terraform por Secrets/Variables y fallan si falta el AMI fijo (07/10)
+- [ ] Cargar en GitHub: variables `GITHUB_ACTIONS_*_ROLE_ARN`, `TF_UBUNTU_AMI_ID`, `SSH_PUBLIC_KEY`; secret `TF_MY_IP`; Environment `production` con aprobadores
+- [ ] Migrar `~/orchestrator` de la instancia a un clone de git en `/home/ubuntu/PFI_Ciberseguridad` (con `.env` y `prisma/soar.db` copiados, pm2 `orchestrator` apuntando a su subcarpeta `orchestrator/`)
+- **Listo cuando:** un merge a `main` pide aprobación, aplica Terraform sin reemplazar instancias, y deploya el orchestrator sin SSH.
 
 ## 9. Diseño para escalar (cuesta casi lo mismo ahora)
 - Orquestador normaliza a `Incident` canónico (no propaga la alerta cruda).

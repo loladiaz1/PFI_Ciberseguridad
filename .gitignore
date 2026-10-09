@@ -2,7 +2,8 @@
 *.tfstate
 *.tfstate.*
 .terraform/
-.terraform.lock.hcl
+# .terraform.lock.hcl SI se commitea: fija la version del provider para que
+# el runner de GitHub use la misma que la laptop.
 
 # Your real variables (holds your public IP)
 terraform.tfvars

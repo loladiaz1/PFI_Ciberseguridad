@@ -2,8 +2,13 @@
 # Lookups
 # ---------------------------------------------------------------------------
 
-# Latest Ubuntu 22.04 LTS (Jammy) AMI, published by Canonical. Region-agnostic.
+# AMI fijo (var.ubuntu_ami_id) -- antes resolvia "most_recent" en cada
+# apply, lo que podia forzar un reemplazo de las 3 instancias sin que nadie
+# tocara una linea de este repo, si Canonical publicaba una AMI nueva entre
+# dos applies ("ami" es un atributo que fuerza reemplazo). Fijarlo al AMI
+# que las instancias ya estan corriendo elimina ese riesgo para siempre.
 data "aws_ami" "ubuntu" {
+  count       = var.ubuntu_ami_id == "" ? 1 : 0
   most_recent = true
   owners      = ["099720109477"] # Canonical
 
@@ -16,6 +21,10 @@ data "aws_ami" "ubuntu" {
     name   = "virtualization-type"
     values = ["hvm"]
   }
+}
+
+locals {
+  ubuntu_ami_id = var.ubuntu_ami_id != "" ? var.ubuntu_ami_id : data.aws_ami.ubuntu[0].id
 }
 
 # Use the account's default VPC and one of its subnets. Enough for the spike;
@@ -54,7 +63,7 @@ resource "aws_security_group" "wazuh" {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = [var.my_ip]
+    cidr_blocks = concat([var.my_ip], var.extra_ssh_cidrs)
   }
 
   ingress {
@@ -103,7 +112,7 @@ resource "aws_security_group" "wazuh" {
 # ---------------------------------------------------------------------------
 
 resource "aws_instance" "wazuh" {
-  ami                         = data.aws_ami.ubuntu.id
+  ami                         = local.ubuntu_ami_id
   instance_type               = var.instance_type
   subnet_id                   = data.aws_subnets.default.ids[0]
   key_name                    = aws_key_pair.wazuh.key_name
@@ -146,7 +155,7 @@ resource "aws_security_group" "victim" {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = [var.my_ip]
+    cidr_blocks = concat([var.my_ip], var.extra_ssh_cidrs)
   }
 
   egress {
@@ -163,7 +172,7 @@ resource "aws_security_group" "victim" {
 }
 
 resource "aws_instance" "victim" {
-  ami                         = data.aws_ami.ubuntu.id
+  ami                         = local.ubuntu_ami_id
   instance_type               = var.victim_instance_type
   subnet_id                   = data.aws_subnets.default.ids[0]
   key_name                    = aws_key_pair.wazuh.key_name
@@ -219,7 +228,7 @@ resource "aws_security_group" "orchestrator" {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = [var.my_ip]
+    cidr_blocks = concat([var.my_ip], var.extra_ssh_cidrs)
   }
 
   # El manager de Wazuh no esta en la tailnet (solo el celular y el
@@ -251,11 +260,12 @@ resource "aws_security_group" "orchestrator" {
 }
 
 resource "aws_instance" "orchestrator" {
-  ami                         = data.aws_ami.ubuntu.id
+  ami                         = local.ubuntu_ami_id
   instance_type               = var.orchestrator_instance_type
   subnet_id                   = data.aws_subnets.default.ids[0]
   key_name                    = aws_key_pair.wazuh.key_name
   vpc_security_group_ids      = [aws_security_group.orchestrator.id]
+  iam_instance_profile        = aws_iam_instance_profile.orchestrator_ssm.name
   associate_public_ip_address = true # solo para el SSH inicial; el trafico de la app va por Tailscale
 
   root_block_device {

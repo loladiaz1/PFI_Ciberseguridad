@@ -1,7 +1,13 @@
 #!/bin/sh
 # Active-response custom de Wazuh para CU-02 (aislar endpoint infectado).
-# Se instala en el AGENTE (la victima), en /var/ossec/active-response/bin/,
-# y se registra en el ossec.conf del MANAGER con:
+# Se instala en el AGENTE (la victima) como
+# /var/ossec/active-response/bin/isolate-host -- SIN la extension .sh
+# (root:wazuh, 750). La API de Wazuh con "!isolate-host" busca un archivo
+# con ese nombre exacto (igual que "!firewall-drop"); con el .sh el agente
+# no lo encuentra y no ejecuta nada, sin dejar error en ningun log (ver
+# progress.md, 08/10). Verificar el aislamiento con "nft list ruleset", no
+# con "iptables -S": iptables 1.8.7 (nf_tables) da un "incompatible"
+# enganoso. Se registra en el ossec.conf del MANAGER con:
 #
 #   <command>
 #     <name>isolate-host</name>
