@@ -85,6 +85,9 @@ resource "aws_iam_role" "github_actions_deploy" {
         StringEquals = {
           "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
           # Restringido a main -- ni siquiera un PR puede asumir este rol.
+          # Ojo: si algun job usara "environment:", el sub del token pasa a
+          # ...:environment:<nombre> y este rol lo rechaza (los workflows no
+          # usan environments, ver deploy.yml).
           "token.actions.githubusercontent.com:sub" = "repo:${var.github_repo}:ref:refs/heads/main"
         }
       }

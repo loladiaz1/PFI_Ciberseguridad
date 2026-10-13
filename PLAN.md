@@ -171,7 +171,7 @@ Si algo se atrasa, se recorta en este orden:
 - [x] `terraform apply` local: rol de deploy con lectura de IAM + acceso al bucket (08/10)
 - [x] Workflows reciben las variables de Terraform por Secrets/Variables y fallan si falta el AMI fijo (07/10)
 - [x] Variables y secrets cargados en GitHub (08/10)
-- [ ] Environment `production` con aprobadores en GitHub — **bloqueante antes de mergear a `main`**
+- [x] ~~Environment `production`~~ descartado (13/10: requiere admin del repo). Reemplazo: el merge del PR es la aprobación humana + `deploy.yml` aborta solo si el plan destruye o reemplaza algún recurso
 - [x] `~/orchestrator` migrado a clone de git en `/home/ubuntu/PFI_Ciberseguridad` (08/10; `.env` con `chmod 600`, pm2 `orchestrator` corriendo desde `orchestrator/`). La carpeta vieja `~/orchestrator` queda de respaldo hasta el primer deploy exitoso.
 - [ ] PR de prueba a `main`: CI en verde y plan con `No changes`
 - **Listo cuando:** un merge a `main` pide aprobación, aplica Terraform sin reemplazar instancias, y deploya el orchestrator sin SSH.

@@ -1,13 +1,16 @@
 name: Deploy
 
-# Corre en cada push a main (o sea, en cada merge). El job de Terraform
-# queda pausado hasta que alguien lo apruebe manualmente -- ver Settings ->
-# Environments -> production -> Required reviewers en GitHub (no se
-# configura desde este archivo, es un setting del lado de GitHub).
+# Corre en cada push a main (o sea, en cada merge). Dos frenos, sin
+# Environment de GitHub (requiere admin del repo, que no tenemos):
+#   1) Humano: el merge a main ES la aprobacion -- se mergea solo despues de
+#      leer el plan que ci.yml comenta en el PR.
+#   2) Automatico: si el plan destruye o reemplaza CUALQUIER recurso, el job
+#      aborta sin aplicar (paso "Frenar si el plan destruye...").
 #
 # El 26/08 un "terraform apply" casi reemplazo las 3 instancias por un
-# falso positivo (ver progress.md). Este gate es esa misma revision humana
-# que evito el desastre esa vez, ahora obligatoria en vez de opcional.
+# falso positivo (ver progress.md). El freno 2 ataja exactamente ese caso
+# aunque nadie lea el plan; un replace legitimo se aplica a mano desde la
+# laptop, despues de revisarlo.
 on:
   push:
     branches: [main]
@@ -23,7 +26,9 @@ permissions:
 jobs:
   terraform-apply:
     runs-on: ubuntu-latest
-    environment: production # <- el gate. Configurar required reviewers en GitHub.
+    # Sin "environment:" a proposito: con environment el token OIDC trae
+    # sub=...:environment:<nombre> y el rol de deploy (cicd.tf) solo acepta
+    # ...:ref:refs/heads/main.
     defaults:
       run:
         working-directory: terraform
@@ -56,11 +61,33 @@ jobs:
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.16.4 # misma que la laptop
+          # Sin el wrapper: mete lineas extra en stdout y rompe el
+          # "terraform show -json" de abajo.
+          terraform_wrapper: false
 
       - run: terraform init
 
+      - name: terraform plan
+        run: terraform plan -input=false -no-color -out=tfplan
+
+      - name: Frenar si el plan destruye o reemplaza algo
+        # Un replace aparece como actions ["delete","create"] (o al reves).
+        # pipefail/-u: si jq o terraform show fallan, abortar -- nunca dejar
+        # pasar el apply por un chequeo que no corrio.
+        run: |
+          set -euo pipefail
+          terraform show -json tfplan > plan.json
+          deletes=$(jq '[(.resource_changes // [])[] | select(.change.actions | index("delete"))]' plan.json)
+          if [ "$(echo "$deletes" | jq length)" -gt 0 ]; then
+            echo "El plan destruye o reemplaza recursos -- NO se aplica:" >&2
+            echo "$deletes" | jq -r '.[] | "  \(.address): \(.change.actions | join(" -> "))"' >&2
+            echo "Revisarlo y aplicarlo a mano desde la laptop si es intencional." >&2
+            exit 1
+          fi
+
       - name: terraform apply
-        run: terraform apply -auto-approve -input=false
+        # Aplica exactamente el plan revisado arriba, no uno recalculado.
+        run: terraform apply -input=false tfplan
 
   deploy-orchestrator:
     needs: terraform-apply
