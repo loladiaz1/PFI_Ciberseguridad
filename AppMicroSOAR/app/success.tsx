@@ -1,16 +1,23 @@
-import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { useFonts, Roboto_600SemiBold, Roboto_700Bold } from "@expo-google-fonts/roboto";
 import Colors from "../styles/colors";
 import BottomNav from "../components/BottomNav";
-import { BrandLogo } from "../components/BrandLogo";
+import { BrandHeader } from "../components/ui/BrandHeader";
+import type { MitigationAction } from "../types";
 
 export default function SuccessScreen(){
 
-const { srcIp, hostname, elapsedMs } = useLocalSearchParams<{
+const { action, srcIp, hostname, elapsedMs } = useLocalSearchParams<{
+    action: MitigationAction;
     srcIp: string;
     hostname: string;
     elapsedMs: string;
 }>();
+const isIsolate = action === "isolate-host";
+
+const [fontsLoaded] = useFonts({ Roboto_600SemiBold, Roboto_700Bold });
 
 const seconds = elapsedMs ? (Number(elapsedMs) / 1000).toFixed(1) : "-";
 
@@ -18,35 +25,46 @@ return(
 
 <View style={styles.container}>
 
-<BrandLogo showText={false} />
+<BrandHeader />
 
-<Text style={styles.check}>
-✅
-</Text>
+<ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
 
-<Text style={styles.title}>
+<MaterialCommunityIcons
+    name="check-circle"
+    size={90}
+    color={Colors.success}
+    style={styles.icon}
+/>
+
+<Text style={[styles.title, fontsLoaded && styles.titleRoboto]}>
 Mitigation Completed
 </Text>
 
 <Text style={styles.subtitle}>
-The malicious IP has been successfully blocked.
+{isIsolate
+    ? "The host has been isolated from the network."
+    : "The malicious IP has been successfully blocked."}
 </Text>
 
 <View style={styles.card}>
 
+{isIsolate ? null : (
+<>
 <Text style={styles.label}>
 Blocked IP
 </Text>
 
-<Text style={styles.value}>
+<Text style={[styles.value, fontsLoaded && styles.valueRoboto]}>
 {srcIp}
 </Text>
+</>
+)}
 
 <Text style={styles.label}>
-Target
+{isIsolate ? "Isolated Host" : "Target"}
 </Text>
 
-<Text style={styles.value}>
+<Text style={[styles.value, fontsLoaded && styles.valueRoboto]}>
 {hostname}
 </Text>
 
@@ -54,7 +72,7 @@ Target
 Execution Time
 </Text>
 
-<Text style={styles.value}>
+<Text style={[styles.value, fontsLoaded && styles.valueRoboto]}>
 {seconds} seconds
 </Text>
 
@@ -70,6 +88,9 @@ Back to Dashboard
 </Text>
 
 </TouchableOpacity>
+
+</ScrollView>
+
 <BottomNav />
 
 </View>
@@ -82,13 +103,21 @@ const styles = StyleSheet.create({
   container:{
     flex:1,
     backgroundColor:Colors.background,
-    justifyContent:"center",
-    padding:25
   },
 
-  check:{
-    fontSize:70,
-    textAlign:"center"
+  scroll:{
+    flex:1,
+  },
+
+  content:{
+    flexGrow:1,
+    justifyContent:"center",
+    padding:25,
+  },
+
+  icon:{
+    alignSelf:"center",
+    marginTop:10,
   },
 
   title:{
@@ -97,6 +126,10 @@ const styles = StyleSheet.create({
     textAlign:"center",
     marginTop:15,
     color:Colors.text
+  },
+
+  titleRoboto:{
+    fontFamily:"Roboto_700Bold",
   },
 
   subtitle:{
@@ -122,6 +155,10 @@ const styles = StyleSheet.create({
     fontSize:18,
     fontWeight:"600",
     color:Colors.text
+  },
+
+  valueRoboto:{
+    fontFamily:"Roboto_600SemiBold",
   },
 
   button:{

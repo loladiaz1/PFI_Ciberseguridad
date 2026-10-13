@@ -14,10 +14,27 @@ variable "my_ip" {
   }
 }
 
+variable "extra_ssh_cidrs" {
+  description = "Rangos extra (ademas de my_ip) que pueden entrar por SSH (22) a las 3 instancias, ej. [\"181.10.20.0/24\"]. No abre la API de Wazuh (55000), que sigue solo para my_ip."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = alltrue([for c in var.extra_ssh_cidrs : can(cidrhost(c, 0))])
+    error_message = "Cada elemento de extra_ssh_cidrs tiene que ser un CIDR, ej. 181.10.20.0/24."
+  }
+}
+
 variable "public_key_path" {
   description = "Path to the SSH public key that becomes the EC2 key pair. Generate one with: ssh-keygen -t ed25519"
   type        = string
   default     = "~/.ssh/id_ed25519.pub"
+}
+
+variable "ubuntu_ami_id" {
+  description = "AMI ID fijo para las 3 instancias (ej. ami-0abcd1234...). Vacio = resuelve 'most_recent' en cada apply (riesgo: una AMI nueva de Canonical entre dos applies fuerza reemplazo de las 3 instancias sin que nadie haya tocado el repo). Recomendado: fijarlo al AMI que las instancias ya estan corriendo -- ver el AMI ID actual en la consola EC2 (Instance -> Details -> AMI ID)."
+  type        = string
+  default     = ""
 }
 
 variable "instance_type" {

@@ -11,7 +11,7 @@
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "NSFaceIDUsageDescription": "Usamos Face ID para confirmar acciones criticas como bloquear una IP."
+        "NSFaceIDUsageDescription": "Use Face ID to securely authenticate and access FORTIA."
       }
     },
     "android": {
@@ -42,7 +42,9 @@
           }
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-font",
+      "expo-local-authentication"
     ],
     "experiments": {
       "typedRoutes": true,

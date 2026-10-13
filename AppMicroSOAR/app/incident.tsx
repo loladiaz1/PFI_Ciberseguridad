@@ -1,13 +1,17 @@
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, ScrollView } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
 import Colors from "../styles/colors";
 import BottomNav from "../components/BottomNav";
-import { BrandLogo } from "../components/BrandLogo";
+import { BrandHeader } from "../components/ui/BrandHeader";
 import { MaterialIcons } from "@expo/vector-icons";
 import { getIncidentById } from "../services/api";
 import { severityLabel } from "../utils/severity";
-import type { Incident } from "../types";
+import type { Incident, MitigationAction } from "../types";
+
+// Formas que guarda orchestrator/src/enrichment.js (JSON.stringify).
+type VtStats = { malicious: number; suspicious: number; harmless: number };
+type AbuseStats = { abuseConfidenceScore: number; totalReports: number; countryCode: string | null };
 
 export default function IncidentDetail() {
     const { id } = useLocalSearchParams<{ id: string }>();
@@ -25,79 +29,141 @@ export default function IncidentDetail() {
 
     if (loading) {
         return (
-            <View style={[styles.container, styles.centered]}>
-                <ActivityIndicator size="large" />
+            <View style={styles.container}>
+                <BrandHeader />
+                <View style={styles.centered}>
+                    <ActivityIndicator size="large" />
+                </View>
+                <BottomNav />
             </View>
         );
     }
 
     if (error || !incident) {
         return (
-            <View style={[styles.container, styles.centered]}>
-                <Text style={styles.value}>{error || "Incident not found"}</Text>
+            <View style={styles.container}>
+                <BrandHeader />
+                <View style={styles.centered}>
+                    <Text style={styles.value}>{error || "Incident not found"}</Text>
+                </View>
+                <BottomNav />
             </View>
         );
     }
 
     const severity = severityLabel(incident.severity);
+    const action: MitigationAction = incident.srcIp ? "block-ip" : "isolate-host";
+    const actionLabel = action === "block-ip" ? "BLOCK IP" : "ISOLATE HOST";
+    const vt: VtStats | null = incident.enrichmentVt ? JSON.parse(incident.enrichmentVt) : null;
+    const abuse: AbuseStats | null = incident.enrichmentAbuseIpdb ? JSON.parse(incident.enrichmentAbuseIpdb) : null;
+    const mitigatedAt = incident.status === "blocked" ? incident.blockedAt
+        : incident.status === "isolated" ? incident.isolatedAt
+        : null;
 
     return (
         <View style={styles.container}>
-            <BrandLogo showText={false} />
+            <BrandHeader />
 
-            <Text style={styles.title}>
-                Rule #{incident.ruleId}
-            </Text>
+            <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
 
-            <View style={styles.card}>
+                <Text style={styles.title}>
+                    Rule #{incident.ruleId}
+                </Text>
 
-                <Text style={styles.label}>Severity</Text>
-                <View style={styles.statusRow}>
-                    <MaterialIcons name="error" size={22} color={severity.color} />
-                    <Text style={[styles.critical, { color: severity.color }]}>{severity.label}</Text>
-                </View>
+                {incident.ruleDescription ? (
+                    <Text style={styles.subtitle}>{incident.ruleDescription}</Text>
+                ) : null}
 
-                <Text style={styles.label}>Target</Text>
-                <Text style={styles.value}>{incident.hostname}</Text>
+                <View style={styles.card}>
 
-                <Text style={styles.label}>Attacker IP</Text>
-                <Text style={styles.value}>{incident.srcIp}</Text>
+                    <Text style={styles.label}>Detected</Text>
+                    <Text style={styles.value}>{new Date(incident.timestamp).toLocaleString()}</Text>
 
-                <Text style={styles.label}>Agent</Text>
-                <Text style={styles.value}>{incident.agentId}</Text>
-
-                <Text style={styles.label}>Status</Text>
-                <Text style={styles.value}>{incident.status}</Text>
-
-            </View>
-
-            {incident.status === "blocked" ? (
-                <View style={styles.recommendation}>
-                    <Text style={styles.recTitle}>Already mitigated</Text>
-                    <Text style={styles.recText}>
-                        This IP was blocked at {incident.blockedAt}.
-                    </Text>
-                </View>
-            ) : (
-                <>
-                    <View style={styles.recommendation}>
-                        <Text style={styles.recTitle}>Automatic Recommendation</Text>
-                        <Text style={styles.recText}>
-                            This IP triggered a {severity.label.toLowerCase()} severity rule
-                            against {incident.hostname}.
-                        </Text>
-                        <Text style={styles.recText}>Recommended action:</Text>
-                        <Text style={styles.block}>BLOCK IP</Text>
+                    <Text style={styles.label}>Severity</Text>
+                    <View style={styles.statusRow}>
+                        <MaterialIcons name="error" size={22} color={severity.color} />
+                        <Text style={[styles.critical, { color: severity.color }]}>{severity.label}</Text>
                     </View>
 
-                    <TouchableOpacity
-                        style={styles.button}
-                        onPress={() => router.push({ pathname: "/auth", params: { id: String(incident.id) } })}
-                    >
-                        <Text style={styles.buttonText}>BLOCK IP</Text>
-                    </TouchableOpacity>
-                </>
-            )}
+                    <Text style={styles.label}>Target</Text>
+                    <Text style={styles.value}>{incident.hostname}</Text>
+
+                    {incident.srcIp ? (
+                        <>
+                            <Text style={styles.label}>Attacker IP</Text>
+                            <Text style={styles.value}>{incident.srcIp}</Text>
+                        </>
+                    ) : null}
+
+                    <Text style={styles.label}>Agent</Text>
+                    <Text style={styles.value}>{incident.agentId}</Text>
+
+                    <Text style={styles.label}>Status</Text>
+                    <Text style={styles.value}>{incident.status}</Text>
+
+                </View>
+
+                {incident.srcIp ? (
+                    <View style={styles.intel}>
+                        <Text style={styles.intelTitle}>Threat Intelligence</Text>
+
+                        {!vt && !abuse ? (
+                            <Text style={styles.recText}>No threat intelligence available for this IP yet.</Text>
+                        ) : null}
+
+                        {vt ? (
+                            <>
+                                <Text style={styles.label}>VirusTotal</Text>
+                                <Text style={[styles.value, vt.malicious > 0 && { color: Colors.danger }]}>
+                                    {vt.malicious} malicious · {vt.suspicious} suspicious · {vt.harmless} harmless
+                                </Text>
+                            </>
+                        ) : null}
+
+                        {abuse ? (
+                            <>
+                                <Text style={styles.label}>AbuseIPDB</Text>
+                                <Text style={[styles.value, abuse.abuseConfidenceScore >= 50 && { color: Colors.danger }]}>
+                                    {abuse.abuseConfidenceScore}% abuse confidence · {abuse.totalReports} reports
+                                    {abuse.countryCode ? ` · ${abuse.countryCode}` : ""}
+                                </Text>
+                            </>
+                        ) : null}
+                    </View>
+                ) : null}
+
+                {mitigatedAt ? (
+                    <View style={styles.recommendation}>
+                        <Text style={styles.recTitle}>Already mitigated</Text>
+                        <Text style={styles.recText}>
+                            {incident.status === "blocked" ? "This IP was blocked" : "This host was isolated"} at{" "}
+                            {new Date(mitigatedAt).toLocaleString()}.
+                        </Text>
+                    </View>
+                ) : (
+                    <>
+                        <View style={styles.recommendation}>
+                            <Text style={styles.recTitle}>Automatic Recommendation</Text>
+                            <Text style={styles.recText}>
+                                {action === "block-ip"
+                                    ? `This IP triggered a ${severity.label.toLowerCase()} severity rule against ${incident.hostname}.`
+                                    : `${incident.hostname} triggered a ${severity.label.toLowerCase()} severity rule. Isolating it cuts all its network traffic except the Wazuh manager channel.`}
+                            </Text>
+                            <Text style={styles.recText}>Recommended action:</Text>
+                            <Text style={styles.block}>{actionLabel}</Text>
+                        </View>
+
+                        <TouchableOpacity
+                            style={styles.button}
+                            onPress={() => router.push({ pathname: "/auth", params: { id: String(incident.id), action } })}
+                        >
+                            <Text style={styles.buttonText}>{actionLabel}</Text>
+                        </TouchableOpacity>
+                    </>
+                )}
+
+            </ScrollView>
+
             <BottomNav />
 
         </View>
@@ -111,11 +177,19 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: Colors.background,
-        padding: 20,
         paddingTop: 60
     },
 
+    scroll: {
+        flex: 1,
+    },
+
+    content: {
+        padding: 20,
+    },
+
     centered: {
+        flex: 1,
         justifyContent: "center",
         alignItems: "center",
     },
@@ -123,8 +197,14 @@ const styles = StyleSheet.create({
     title: {
         fontSize: 30,
         fontWeight: "bold",
-        marginBottom: 20,
+        marginBottom: 6,
         color: Colors.text
+    },
+
+    subtitle: {
+        fontSize: 15,
+        color: Colors.textSecondary,
+        marginBottom: 20
     },
 
     card: {
@@ -155,6 +235,22 @@ const styles = StyleSheet.create({
         marginLeft: 8,
         fontWeight: "bold",
         fontSize: 22
+    },
+
+    intel: {
+        backgroundColor: Colors.card,
+        padding: 20,
+        borderRadius: 16,
+        marginTop: 25,
+        borderWidth: 1,
+        borderColor: Colors.border
+    },
+
+    intelTitle: {
+        fontWeight: "bold",
+        fontSize: 18,
+        marginBottom: 10,
+        color: Colors.text
     },
 
     recommendation: {

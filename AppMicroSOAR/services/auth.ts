@@ -1,6 +1,6 @@
 import { http } from './http';
 import { saveToken } from './tokenStore';
-import { userSeed } from '../data/user';
+import type { UserProfile } from '../types';
 
 export const signIn = async (username: string, password: string) => {
   if (!username || !password) {
@@ -10,7 +10,7 @@ export const signIn = async (username: string, password: string) => {
   const { data } = await http.post<{ token: string }>('/api/v1/auth/login', { username, password });
   await saveToken(data.token);
 
-  return { user: userSeed, token: data.token };
+  return { token: data.token };
 };
 
 export const signUp = async (name: string, email: string, password: string) => {
@@ -18,5 +18,12 @@ export const signUp = async (name: string, email: string, password: string) => {
     throw new Error('Please complete all fields');
   }
 
-  return { user: { ...userSeed, name, email }, token: 'demo-token' };
+  // Mock: no hay endpoint de registro real todavia (MVP, un solo usuario
+  // fijo por env vars en el backend). No guarda sesion -- ver register.tsx.
+  return { user: { name, email } };
+};
+
+export const getStoredUser = async (): Promise<UserProfile> => {
+  const { data } = await http.get<UserProfile>('/api/v1/me');
+  return data;
 };

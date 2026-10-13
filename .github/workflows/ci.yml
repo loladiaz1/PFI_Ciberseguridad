@@ -1,0 +1,115 @@
+name: CI
+
+# Corre en cada Pull Request hacia main. Nunca escribe en AWS -- usa el rol
+# de solo lectura (github_actions_ci, policy ReadOnlyAccess) para que
+# "terraform plan" muestre qué cambiaría, sin poder aplicarlo.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "terraform/**"
+      - "orchestrator/**"
+      - ".github/workflows/**"
+
+permissions:
+  id-token: write # requerido por OIDC (aws-actions/configure-aws-credentials)
+  contents: read
+  pull-requests: write # para comentar el plan en el PR
+
+jobs:
+  terraform-plan:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: terraform
+    # terraform.tfvars no esta en git: el runner recibe las variables desde
+    # Settings -> Secrets and variables -> Actions (ver PLAN.md, CI/CD).
+    env:
+      TF_VAR_my_ip: ${{ secrets.TF_MY_IP }}
+      # Opcional, formato HCL: ["181.10.20.0/24"]. Si falta, [] -- ojo: el apply
+      # borraria del SG cualquier rango extra que este solo en terraform.tfvars.
+      TF_VAR_extra_ssh_cidrs: ${{ secrets.TF_EXTRA_SSH_CIDRS || '[]' }}
+      TF_VAR_ubuntu_ami_id: ${{ vars.TF_UBUNTU_AMI_ID }}
+      TF_VAR_public_key_path: ${{ github.workspace }}/terraform/ci_key.pub
+      SSH_PUBLIC_KEY: ${{ vars.SSH_PUBLIC_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Chequear variables de Terraform
+        # Sin AMI fijo, Terraform resuelve "most_recent" y puede proponer
+        # reemplazar las 3 instancias -- mejor fallar aca.
+        run: |
+          for v in TF_VAR_my_ip TF_VAR_ubuntu_ami_id SSH_PUBLIC_KEY; do
+            if [ -z "${!v}" ]; then echo "Falta $v (ver Secrets/Variables del repo)" >&2; exit 1; fi
+          done
+          echo "$SSH_PUBLIC_KEY" > ci_key.pub
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::530390084140:role/micro-soar-github-actions-ci # no es secreto: la trust policy (cicd.tf) decide quien lo asume
+          aws-region: us-east-1
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.16.4 # misma que la laptop
+
+      - name: terraform fmt -check
+        run: terraform fmt -check -recursive
+
+      - name: terraform init
+        run: terraform init
+
+      - name: terraform validate
+        run: terraform validate
+
+      - name: terraform plan
+        id: plan
+        # -lock=false: el rol de CI es solo-lectura, no puede escribir el
+        # .tflock en S3. Un plan no modifica el state, no necesita lock.
+        # pipefail: sin esto el tee se come el exit code y un plan roto
+        # pasaria como exitoso.
+        run: |
+          set -o pipefail
+          terraform plan -no-color -input=false -lock=false 2>&1 | tee /tmp/plan.txt
+        continue-on-error: true
+
+      - name: Comentar el plan en el PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const plan = fs.readFileSync('/tmp/plan.txt', 'utf8').slice(-60000);
+            const body = `#### Terraform Plan\n<details><summary>Ver plan completo</summary>\n\n\`\`\`\n${plan}\n\`\`\`\n</details>`;
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body,
+            });
+
+      - name: Fallar si el plan tuvo error
+        if: steps.plan.outcome == 'failure'
+        run: exit 1
+
+  orchestrator-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: orchestrator
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm ci
+
+      - run: npm test
+        env:
+          # Valores dummy -- los tests no necesitan infra real, ver
+          # tests/jest.setup.js (nunca pegan a APIs externas).
+          DATABASE_URL: "file:./ci.db"
+          AUTH_USER: "ci"
+          AUTH_PASSWORD: "ci-test-password"
+          JWT_SECRET: "ci-only-not-for-prod"

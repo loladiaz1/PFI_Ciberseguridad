@@ -47,4 +47,30 @@ async function blockIp(host, token, agentId, ip) {
   return result;
 }
 
-module.exports = { authenticate, blockIp };
+async function isolateHost(host, token, agentId) {
+  const url = `${host}/active-response`;
+  // isolate-host no toma IP (aisla al propio agente objetivo), a diferencia
+  // de firewall-drop -- ver orchestrator/integrations/isolate-host.sh.
+  const body = { command: "!isolate-host" };
+
+  const resp = await axios.put(url, body, {
+    headers: { Authorization: `Bearer ${token}` },
+    params: { agents_list: agentId },
+    httpsAgent,
+    timeout: 10000,
+    validateStatus: () => true,
+  });
+
+  if (resp.status !== 200) {
+    throw new Error(`El comando fue rechazado (${resp.status}): ${JSON.stringify(resp.data)}`);
+  }
+
+  const result = resp.data;
+  if (result.error || result.data.total_failed_items > 0) {
+    throw new Error(`El comando fue rechazado: ${JSON.stringify(result)}`);
+  }
+
+  return result;
+}
+
+module.exports = { authenticate, blockIp, isolateHost };

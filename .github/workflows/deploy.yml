@@ -1,0 +1,159 @@
+name: Deploy
+
+# Corre en cada push a main (o sea, en cada merge). Dos frenos, sin
+# Environment de GitHub (requiere admin del repo, que no tenemos):
+#   1) Humano: el merge a main ES la aprobacion -- se mergea solo despues de
+#      leer el plan que ci.yml comenta en el PR.
+#   2) Automatico: si el plan destruye o reemplaza CUALQUIER recurso, el job
+#      aborta sin aplicar (paso "Frenar si el plan destruye...").
+#
+# El 26/08 un "terraform apply" casi reemplazo las 3 instancias por un
+# falso positivo (ver progress.md). El freno 2 ataja exactamente ese caso
+# aunque nadie lea el plan; un replace legitimo se aplica a mano desde la
+# laptop, despues de revisarlo.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "terraform/**"
+      - "orchestrator/**"
+      - ".github/workflows/deploy.yml"
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  terraform-apply:
+    runs-on: ubuntu-latest
+    # Sin "environment:" a proposito: con environment el token OIDC trae
+    # sub=...:environment:<nombre> y el rol de deploy (cicd.tf) solo acepta
+    # ...:ref:refs/heads/main.
+    defaults:
+      run:
+        working-directory: terraform
+    # Mismas variables que ci.yml (terraform.tfvars no esta en git).
+    env:
+      TF_VAR_my_ip: ${{ secrets.TF_MY_IP }}
+      # Opcional, formato HCL: ["181.10.20.0/24"]. Si falta, [] -- ojo: el apply
+      # borraria del SG cualquier rango extra que este solo en terraform.tfvars.
+      TF_VAR_extra_ssh_cidrs: ${{ secrets.TF_EXTRA_SSH_CIDRS || '[]' }}
+      TF_VAR_ubuntu_ami_id: ${{ vars.TF_UBUNTU_AMI_ID }}
+      TF_VAR_public_key_path: ${{ github.workspace }}/terraform/ci_key.pub
+      SSH_PUBLIC_KEY: ${{ vars.SSH_PUBLIC_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Chequear variables de Terraform
+        # Critico aca: sin AMI fijo, el apply podria REEMPLAZAR las 3
+        # instancias (most_recent). Mejor no aplicar nada.
+        run: |
+          for v in TF_VAR_my_ip TF_VAR_ubuntu_ami_id SSH_PUBLIC_KEY; do
+            if [ -z "${!v}" ]; then echo "Falta $v (ver Secrets/Variables del repo)" >&2; exit 1; fi
+          done
+          echo "$SSH_PUBLIC_KEY" > ci_key.pub
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::530390084140:role/micro-soar-github-actions-deploy # no es secreto: la trust policy (cicd.tf) decide quien lo asume
+          aws-region: us-east-1
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.16.4 # misma que la laptop
+          # Sin el wrapper: mete lineas extra en stdout y rompe el
+          # "terraform show -json" de abajo.
+          terraform_wrapper: false
+
+      - run: terraform init
+
+      - name: terraform plan
+        run: terraform plan -input=false -no-color -out=tfplan
+
+      - name: Frenar si el plan destruye o reemplaza algo
+        # Un replace aparece como actions ["delete","create"] (o al reves).
+        # pipefail/-u: si jq o terraform show fallan, abortar -- nunca dejar
+        # pasar el apply por un chequeo que no corrio.
+        run: |
+          set -euo pipefail
+          terraform show -json tfplan > plan.json
+          deletes=$(jq '[(.resource_changes // [])[] | select(.change.actions | index("delete"))]' plan.json)
+          if [ "$(echo "$deletes" | jq length)" -gt 0 ]; then
+            echo "El plan destruye o reemplaza recursos -- NO se aplica:" >&2
+            echo "$deletes" | jq -r '.[] | "  \(.address): \(.change.actions | join(" -> "))"' >&2
+            echo "Revisarlo y aplicarlo a mano desde la laptop si es intencional." >&2
+            exit 1
+          fi
+
+      - name: terraform apply
+        # Aplica exactamente el plan revisado arriba, no uno recalculado.
+        run: terraform apply -input=false tfplan
+
+  deploy-orchestrator:
+    needs: terraform-apply
+    runs-on: ubuntu-latest
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::530390084140:role/micro-soar-github-actions-deploy # no es secreto: la trust policy (cicd.tf) decide quien lo asume
+          aws-region: us-east-1
+
+      - name: Buscar la instancia del orchestrator por tag
+        id: find-instance
+        run: |
+          id=$(aws ec2 describe-instances \
+            --filters "Name=tag:Name,Values=micro-soar-orchestrator" "Name=instance-state-name,Values=running" \
+            --query "Reservations[0].Instances[0].InstanceId" --output text)
+          if [ -z "$id" ] || [ "$id" = "None" ]; then
+            echo "No se encontro la instancia del orchestrator corriendo -- esta 'stopped'? no se puede deployar." >&2
+            exit 1
+          fi
+          echo "instance_id=$id" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy via SSM Run Command (sin SSH)
+        # Requiere que /home/ubuntu/PFI_Ciberseguridad en la instancia YA sea
+        # un clone de git del repo entero (migracion unica, ver PLAN.md
+        # CI/CD) con el proceso pm2 "orchestrator" corriendo desde su
+        # subcarpeta orchestrator/. "reset --hard" descarta cambios locales
+        # trackeados, pero NO toca .env ni prisma/soar.db (estan en
+        # .gitignore).
+        #
+        # SSM ejecuta como root: todo corre como "ubuntu" porque el clone es
+        # de ubuntu (git rechaza repos de otro usuario) y pm2 es por usuario
+        # (como root no veria el proceso).
+        run: |
+          command_id=$(aws ssm send-command \
+            --instance-ids "${{ steps.find-instance.outputs.instance_id }}" \
+            --document-name "AWS-RunShellScript" \
+            --comment "Deploy orchestrator desde GitHub Actions (${{ github.sha }})" \
+            --parameters 'commands=[
+              "sudo -u ubuntu -i bash -c \"set -euo pipefail; cd /home/ubuntu/PFI_Ciberseguridad && git fetch origin main && git reset --hard origin/main && cd orchestrator && npm ci --omit=dev && npx prisma generate && npx prisma db push && pm2 restart orchestrator --update-env\""
+            ]' \
+            --query "Command.CommandId" --output text)
+
+          echo "Esperando resultado del comando SSM $command_id..."
+          aws ssm wait command-executed \
+            --command-id "$command_id" \
+            --instance-id "${{ steps.find-instance.outputs.instance_id }}" || true
+
+          status=$(aws ssm get-command-invocation \
+            --command-id "$command_id" \
+            --instance-id "${{ steps.find-instance.outputs.instance_id }}" \
+            --query "Status" --output text)
+
+          echo "--- stdout ---"
+          aws ssm get-command-invocation \
+            --command-id "$command_id" \
+            --instance-id "${{ steps.find-instance.outputs.instance_id }}" \
+            --query "StandardOutputContent" --output text
+
+          echo "--- stderr ---"
+          aws ssm get-command-invocation \
+            --command-id "$command_id" \
+            --instance-id "${{ steps.find-instance.outputs.instance_id }}" \
+            --query "StandardErrorContent" --output text
+
+          if [ "$status" != "Success" ]; then
+            echo "Deploy fallo (status: $status)" >&2
+            exit 1
+          fi

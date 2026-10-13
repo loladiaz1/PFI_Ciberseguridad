@@ -10,6 +10,408 @@
 
 ---
 
+## Entrada 7 — 2026-10-05: Automatizar el deploy, y descubrir que la infraestructura no tenía memoria
+
+### Contexto
+
+El objetivo era armar la base para que un push a `main` actualizara la
+infraestructura real de AWS sin reinstalar nada. La restricción de diseño
+venía del propio historial del proyecto: el 26/08 un `terraform apply` casi
+reemplaza las tres instancias por un falso positivo, y lo único que lo
+evitó fue que alguien leyó el plan antes de confirmar. Automatizar el
+`apply` sin esa revisión era reproducir el riesgo sin nadie mirando.
+
+### El diseño: validar automático, aplicar con freno
+
+Se separaron dos niveles. En cada Pull Request, GitHub Actions corre
+`terraform plan` y los tests del orchestrator con un rol de solo lectura
+— automático y sin riesgo, porque no puede modificar nada. En cada push a
+`main`, el `apply` queda pausado detrás de un Environment de GitHub
+(`production`) que exige aprobación humana: la revisión que salvó al
+proyecto el 26/08, convertida en paso obligatorio.
+
+La autenticación contra AWS se hizo por OIDC en vez de guardar claves de
+acceso como secretos del repositorio: GitHub obtiene credenciales
+temporales que solo valen para este repositorio, y el rol con permisos de
+escritura solo puede asumirse desde la rama `main`. Es, además, coherente
+con el argumento central de la tesis — verificación explícita y mínimo
+privilegio — aplicado a la propia cadena de despliegue. El deploy del
+código del orchestrator usa SSM Run Command en lugar de SSH, lo que
+elimina la dependencia del puerto 22: el mismo puerto que la red de la
+facultad bloquea por protocolo, y que para los runners de GitHub (con IPs
+dinámicas) obligaría a abrir más de lo razonable.
+
+### El hallazgo: no había state
+
+Antes de aplicar nada, al preparar el primer `terraform plan` desde la
+laptop, apareció el problema de fondo: el archivo de state de Terraform no
+existía en ningún lado. No había backend remoto configurado, el archivo
+está correctamente excluido de git, y la máquina que hizo el `apply`
+original no era esta. Sin state, Terraform no sabe que las instancias
+existen: un `plan` hubiera propuesto crearlo todo de nuevo, y un `apply`
+hubiera intentado duplicar instancias y Security Groups en paralelo a los
+reales.
+
+Se reconstruyó con `terraform import`, recurso por recurso — una
+operación de solo lectura hacia AWS que registra en el state lo que ya
+existe. En el camino aparecieron dos detalles operativos: en Windows el
+lock del state local no hace cola, así que los imports en paralelo fallan
+de inmediato y hay que correrlos en serie; y un corte de la máquina dejó
+un proceso de Terraform colgado sosteniendo el lock, que hubo que terminar
+antes de seguir. El state, al escribirse de forma atómica, no se corrompió:
+quedó en el último import completo.
+
+### El plan, leído antes de aplicar
+
+Con el state reconstruido, el plan se revisó línea por línea. Ninguna
+instancia se reemplazaba (todas "update in-place"), y el cambio en
+`user_data` venía acompañado de `user_data_replace_on_change = false`, es
+decir, sin reinstalación de Wazuh. El único recurso marcado para destruir
+fue el key pair, por una limitación conocida del import (no trae la clave
+pública al state); se aplicó tras verificar que las instancias lo
+referencian solo por nombre, que el contenido de la clave era idéntico, y
+que un key pair solo importa al lanzar instancias nuevas. Resultado: 9
+recursos creados, 6 modificados en el lugar, 1 reemplazado, sin tocar
+ninguna instancia de forma destructiva. De paso se fijó el AMI de las
+instancias (antes se resolvía "el más reciente" en cada `apply`, lo que
+podía forzar el reemplazo de las tres el día que Canonical publicara una
+imagen nueva).
+
+### Lo que falta
+
+El pipeline no funciona todavía de punta a punta. El bloqueante técnico es
+el backend remoto: mientras el state viva solo en la laptop, cada corrida
+de GitHub Actions arrancaría exactamente en la situación que hubo que
+remediar hoy. El resto es configuración manual en GitHub (variables con
+los ARN de los roles y el Environment con aprobadores) y migrar el
+directorio del orchestrator en la instancia a un clone de git.
+
+### Próximo paso
+
+Backend remoto en S3 para el state, antes de mergear cualquier cambio que
+dispare el workflow de deploy.
+
+---
+
+## Entrada 6 — 2026-10-02: Enriquecimiento, CU-02 validado contra infra real, y tres bugs de infraestructura que llevaban semanas escondidos
+
+### Contexto
+
+El pedido de esta sesión fue avanzar en los dos casos de uso que seguían
+"fuera del MVP": el enriquecimiento de IP vía VirusTotal/AbuseIPDB (candidato
+"si sobra tiempo" desde el `PLAN.md` original) y CU-02, aislar un endpoint
+ante una infección de equipo — uno de los dos PoC que la propuesta formal
+comprometía y que `TESIS_CAPITULOS.md` documentaba como "no implementado,
+dependencia externa no resuelta". La sesión terminó demostrando algo más
+general sobre el estado de la infraestructura: el manager de Wazuh llevaba
+semanas con el disco casi lleno y el DNS roto, sin que nadie lo supiera,
+porque ninguna tarea anterior había necesitado resolver un dominio externo
+ni había llenado el disco lo suficiente como para notarlo.
+
+### Enriquecimiento: la parte fácil, hecha primero a propósito
+
+Antes de tocar CU-02, se implementó el enriquecimiento de IP
+(`orchestrator/src/enrichment.js`): consulta VirusTotal y AbuseIPDB en
+paralelo, cachea el resultado 24 horas por IP para no agotar el rate limit
+gratuito de ninguna de las dos APIs, y no pega a la red en absoluto si falta
+alguna de las dos API keys — así un desarrollador sin credenciales, o la
+suite de tests, nunca dependen de que existan. Se disparó de forma
+asíncrona desde el webhook, sin bloquear la respuesta a Wazuh (que no debe
+quedar esperando una llamada externa). Validado con las keys reales contra
+`8.8.8.8`: ambas APIs devolvieron datos reales (reputación limpia, 216
+reportes históricos en AbuseIPDB). Se eligió este orden —lo más simple y
+más barato primero— tanto por practicidad como porque cierra un hueco real
+de la rúbrica de evaluación del PFI (el criterio "tendencias en
+informática" no tenía ningún candidato implementado todavía).
+
+### CU-02: un bug encontrado antes de tener infraestructura para probarlo
+
+El backend de CU-02 se escribió reusando exactamente el patrón ya probado
+de CU-01: un script de active-response nuevo
+(`orchestrator/integrations/isolate-host.sh`) que, a diferencia de
+`firewall-drop` (que bloquea una IP puntual), aísla al propio agente que lo
+ejecuta —permite loopback, conexiones ya establecidas, y el tráfico hacia/
+desde el manager, y dropea todo lo demás mediante una cadena `iptables`
+dedicada que se puede revertir con el mismo script—; un endpoint
+`POST /api/v1/incidents/:id/actions/isolate-host` en el orchestrator,
+simétrico a `block-ip`; y tests unitarios con el mismo mocking que ya
+usaba `blockIp.test.js`.
+
+Antes de desplegar nada, una auditoría de código contra la forma real de
+una alerta de Wazuh encontró un problema que ningún test anterior hubiera
+atrapado: `normalize.js` exigía el campo `srcIp` en toda alerta, pero una
+alerta de FIM o de detección de malware (que es, justamente, lo que
+dispara CU-02) no tiene IP de atacante — es un evento sobre el propio host,
+no una conexión de red entrante. Se corrigió haciendo `srcIp` opcional
+tanto en la normalización como en el schema de Prisma, y se armó un mock
+realista de una alerta de VirusTotal (`mocks/wazuh_malware_detected.json`,
+con la forma documentada que Wazuh realmente usa) para cubrirlo con un
+test antes de tener ninguna infraestructura real contra la cual probarlo.
+Horas después, la misma causa exacta apareció en producción contra la
+alerta real — confirmando que la auditoría de código, hecha a tiempo, había
+encontrado un bug real y no uno hipotético.
+
+### El obstáculo de siempre: SSH bloqueado, resuelto distinto esta vez
+
+La sesión arrancó con el mismo problema de sesiones anteriores en
+ubicaciones con redes restringidas: SSH directo contra las instancias de
+AWS fallaba. Esta vez se diagnosticó hasta la causa raíz en vez de
+asumirla: la conexión TCP se completaba, pero abortaba apenas el cliente
+mandaba el banner `SSH-2.0-...` — y lo mismo pasaba contra un servidor de
+test completamente ajeno (`test.rebex.net`), descartando cualquier causa
+del lado de AWS. El patrón es el de un firewall de inspección de
+aplicación (tipo Palo Alto) que permite el handshake TCP pero corta por
+firma de protocolo SSH, a cualquier destino — no tiene arreglo posible del
+lado del proyecto.
+
+La salida fue EC2 Instance Connect: SSH iniciado por AWS desde su propia
+infraestructura hacia la instancia, que desde la perspectiva del cliente es
+tráfico HTTPS normal al navegador — nunca sale SSH directo desde la red
+restringida. Requirió abrir el puerto 22 a `0.0.0.0/0` en los Security
+Groups del manager y del orchestrator (el de la víctima ya estaba abierto
+de una sesión anterior) — cada instancia tiene su propio SG independiente,
+así que hubo que repetir el cambio tres veces, con un tropiezo en el medio
+(una edición de la consola creó una regla nueva en el puerto 0 en vez de
+editar la regla de puerto 22 existente, que no hacía nada hasta que se
+corrigió). Queda pendiente decidir si esos SG se revierten a `var.my_ip`
+antes de la demo real o si se busca una mitigación distinta.
+
+### Tres bugs de infraestructura, encontrados por necesitar DNS por primera vez
+
+Con acceso ya resuelto, aparecieron en cadena tres problemas que llevaban
+tiempo ahí sin que nadie los notara, todos en el manager de Wazuh:
+
+**Disco lleno.** El manager no arrancaba (`No space left on device`). El
+disco de 30GB (`var.root_volume_gb`, el default de Terraform) estaba al
+100%, y `/var/ossec/queue/vd` + `/var/ossec/queue/vd_updater` —la caché del
+módulo Vulnerability Detector de Wazuh, que descarga feeds de CVE (NVD,
+OVAL)— concentraban 23 de esos 30GB, acumulados sin límite desde la
+instalación del 21/08. Ningún caso de uso del proyecto usa escaneo de
+vulnerabilidades, así que se vació la caché (recuperable, no son datos
+propios) y se desactivó el módulo (`<vulnerability-detection><enabled>no
+</enabled>`) para que no vuelva a pasar.
+
+**DNS roto.** Con el disco liberado y el manager arriba, la integración de
+VirusTotal seguía sin funcionar — no con un error claro, sino en silencio.
+El motivo: `/etc/resolv.conf` no existía. El symlink que debería apuntar a
+`/run/systemd/resolve/stub-resolv.conf` se había perdido en algún momento
+no determinado; `systemd-resolved` funcionaba bien internamente (confirmado
+con `resolvectl status`), pero nada que use la resolución estándar de
+glibc —Python, `curl`, y hasta el propio `sudo` al intentar resolver su
+propio hostname para el log de auditoría— podía resolver ningún dominio.
+Esto explica, en retrospectiva, el `sudo: unable to resolve host ...` que
+apareció en *todos* los comandos `sudo` de la sesión desde el principio:
+siempre fue el mismo síntoma, invisible porque nunca había bloqueado nada
+hasta que hizo falta resolver `www.virustotal.com` de verdad. Arreglado
+recreando el symlink.
+
+**La API de VirusTotal que usa Wazuh está retirada.** Con DNS funcionando,
+la consulta a VT seguía fallando. La causa, esta vez, no era de este
+proyecto: el script nativo que trae Wazuh 4.8.2
+(`/var/ossec/integrations/virustotal.py`) usa la API v2 de VirusTotal
+(`vtapi/v2/file/report`), que VirusTotal retiró por completo en 2024 — no
+responde para ninguna API key nueva, sea cual sea su validez. Se parcheó el
+script (`request_virustotal_info()` y `query_api()`) para usar la API v3
+(`/api/v3/files/{hash}`, header `x-apikey`), con la misma lógica que ya
+estaba validada en `enrichment.js`. Un detalle operativo no menor: la
+terminal del navegador de Instance Connect corrompe cualquier pegado de
+más de un par de KB (confirmado con un archivo de ~230 líneas que llegó
+con contenido duplicado y mezclado) — el archivo final se transfirió en 9
+fragmentos de ~1500 bytes cada uno, concatenados con `echo -n ... >>` y
+verificados con `md5sum` contra el hash esperado antes de instalarlo.
+
+Confirmado con una llamada manual al script en modo debug: VirusTotal
+devolvió `65/75` motores detectando el hash del archivo EICAR (el string de
+test estándar de la industria, inocuo, reconocido por cualquier motor
+antivirus — no hace falta malware real para probar esto).
+
+### Resultado: CU-02 detecta de punta a punta, contra infraestructura real
+
+Con los tres bugs resueltos y el código desplegado (una branch nueva,
+`feature/cu02-enrichment-backend`, para no tocar `main` ni la branch con
+historia de incidente ya documentada; código llevado al orchestrator real
+vía `git clone` a un directorio temporal y copia selectiva de archivos, sin
+tocar el `.env` de producción), se repitió la prueba de punta a punta real:
+soltar el EICAR en un directorio vigilado de la víctima. Esta vez el flujo
+completo corrió solo: FIM lo detectó, Wazuh consultó VirusTotal, 65 de 75
+motores lo marcaron malicioso, se generó la alerta nativa de Wazuh
+(`ruleId 87105`, nivel 12), el webhook la posteó, y el incidente apareció
+real en `GET /api/v1/incidents` del orchestrator desplegado — sin ninguna
+inyección manual, igual que CU-01 en su momento.
+
+Queda pendiente la otra mitad de CU-02: la *acción* de aislamiento
+(`isolate-host`) está escrita, deployada (script en el agente, comando
+registrado en `ossec.conf`) y probada con mocks, pero nunca se ejecutó un
+aislamiento real invocando la API de Wazuh contra un incidente real — el
+mismo nivel de validación que ya tiene `block-ip` desde la Fase 0, todavía
+no alcanzado acá. Tampoco hay UI en la app para ninguna de las dos cosas
+agregadas esta sesión (enriquecimiento ni CU-02) — decisión explícita:
+backend primero, contra infraestructura real, antes de construir sobre algo
+sin probar.
+
+### Próximo paso
+
+Probar `isolate-host` contra Wazuh real, con el mismo rigor que
+`block_ip.js` en la Entrada 1 (confirmar el aislamiento efectivo en
+`iptables` de la víctima, no solo que la API responda `200`). Después: UI
+en la app para lo de hoy, y los pendientes de siempre — video de respaldo,
+ensayo cronometrado.
+
+---
+
+## Entrada 5 — 2026-08-30: Un incidente de git, reconstruir el backend, e integrar el diseño sin heredar sus regresiones
+
+### Contexto
+
+El pedido de esta sesión era simple de enunciar: que la app dejara de tener
+cualquier dato simulado — el dashboard, el perfil de usuario, el log de
+actividad — y que además se aprovechara el trabajo visual que había hecho
+Lola en su branch (`unificacion-backend-frontend`), rediseñando buena parte
+de las pantallas bajo la marca "Fortia". El PLAN.md original ya contemplaba
+un `GET /api/v1/audit` opcional; lo que faltaba era decidir cómo incorporar
+un rediseño ajeno sin repetir el problema que ya se había evitado una vez,
+el 24/08, cuando se decidió no mergear esa misma branch porque reimplementaba
+el backend entero sin la integración real de Wazuh.
+
+### El incidente
+
+A mitad de sesión, sin que nadie lo pidiera, el repositorio apareció parado
+en `unificacion-backend-frontend` — la branch descartada — con un merge ya
+aplicado que había traído su backend paralelo. Los archivos que sostienen
+todo el proyecto (`orchestrator/src/auth.js`, `db.js`, `normalize.js`,
+`wazuh.js`, y sus tests) habían desaparecido del árbol de trabajo, sin que
+`git status` mostrara ninguna eliminación pendiente: no era un cambio sin
+commitear, era el estado real de esa branch.
+
+La causa, una vez reconstruida, fue una combinación de dos comandos
+ejecutados en el momento equivocado: un `checkout` a la branch descartada,
+seguido de un `git reset --hard origin/main` con la intención de "volver
+para atrás". El `reset --hard` hace exactamente lo que promete — descarta
+cualquier cambio sin commitear en el árbol de trabajo — pero eso incluía
+todo el trabajo de la sesión que todavía no se había guardado: el rate
+limiting recién agregado, el campo `ruleDescription`, las actualizaciones a
+`PLAN.md` y `README.md`. Nada de eso estaba perdido de forma permanente en
+el sentido de "corrompido" — nunca había llegado a existir como commit — así
+que no había manera de recuperarlo con git. Sí había, en cambio, una
+pregunta más urgente que responder antes de tocar nada más: si el daño
+había llegado a `main`.
+
+No había llegado. `main` local y remoto seguían exactamente donde estaban
+antes del incidente — el `reset` había apuntado a `origin/main` como
+destino, no lo había modificado, y el merge problemático vivía únicamente
+en la branch ya descartada, que además ya estaba publicada en el remoto tal
+cual, sin haber tocado nunca la rama principal. La secuencia de verificación
+fue deliberadamente conservadora: confirmar la branch actual, comparar
+`main` contra esa branch archivo por archivo, confirmar que el commit
+problemático no era alcanzable desde ningún remoto salvo el suyo propio, y
+recién ahí volver a `main` (guardando en un `stash` lo que hubiera, por las
+dudas, antes de cualquier cambio de branch). El costo real del incidente
+terminó siendo, exclusivamente, rehacer un par de horas de trabajo sin
+commitear — no perder nada de lo que ya estaba guardado.
+
+La lección que queda, más allá del backend reconstruido: un `git reset
+--hard` no pregunta qué se pierde, y un cambio de branch a mitad de sesión
+puede dejar el árbol de trabajo pareciendo "el mismo repo de siempre"
+mientras en realidad es otro. Verificar la branch activa y el estado real
+del árbol de trabajo antes de asumir continuidad pasó a ser, desde acá, un
+paso explícito y no una formalidad.
+
+### Reconstruir sin mocks
+
+Con `main` de vuelta, la parte constructiva de la sesión tuvo dos frentes.
+
+El primero fue backend: además de rehacer el rate limiting y el
+`ruleDescription` perdidos, se agregaron dos piezas nuevas — un modelo
+`User` con `GET`/`PUT /api/v1/me`, y un modelo `AuditEvent` con
+`GET /api/v1/audit`. Ninguno de los dos necesitó un endpoint de registro
+real: el perfil se resuelve con un `upsert` sobre el `username` que ya trae
+el JWT (la fila se crea sola la primera vez que el usuario autenticado la
+pide, sin condición de carrera con el arranque del servidor), y el audit
+log se llena solo, agregando una línea en los tres puntos donde ya pasaba
+algo real — un login exitoso, un incidente detectado por el webhook, una IP
+bloqueada. No hizo falta inventar ningún dato: alcanzó con registrar lo que
+el sistema ya hacía.
+
+El segundo frente fue reconciliar el diseño de Lola con esos datos reales,
+pantalla por pantalla en vez de por branch completa. Revisando el diff de
+su branch contra `main` (29 archivos) apareció un patrón que confirmó por
+qué la decisión del 24/08 de no mergear en bloque había sido la correcta:
+varias de esas pantallas no eran solo un rediseño visual, sino un
+retroceso silencioso a datos simulados. La más elocuente fue
+`loading.tsx`, que tenía una constante `MOCK_SUCCESS = true` literal y
+nunca llegaba a llamar al backend — la pantalla que en la versión real mide
+el tiempo exacto del bloqueo, el número central del pitch del proyecto,
+había sido reemplazada por una animación con tiempos inventados.
+`success.tsx` esperaba parámetros de navegación con otros nombres
+(`ip`/`target`/`time` en vez de `srcIp`/`hostname`/`elapsedMs`), con un
+fallback hardcodeado de `"1.4 seconds"` que se hubiera mostrado siempre,
+sin importar cuánto tardara el bloqueo real. `incident.tsx` esperaba
+recibir el incidente entero serializado como parámetro de navegación en
+vez de buscarlo por `id`, así que hubiera quedado en blanco cada vez que se
+tocara un incidente desde cualquier lista real.
+
+El criterio que se aplicó fue separar explícitamente qué de cada pantalla
+era diseño y qué era lógica de datos, y adoptar solo lo primero cuando lo
+segundo estaba comprometido. El login y el registro sí se adoptaron
+completos — su validación de contraseña y la marca "Fortia" eran una
+mejora genuina sin ningún retroceso de datos — aunque el login pedía un
+email con validación de formato en lugar de un username, y hubo que
+adaptarlo antes de traerlo: el backend real usa un usuario fijo
+(`analyst`), que nunca hubiera pasado esa validación, dejando el botón de
+login permanentemente deshabilitado. Las pantallas con lógica comprometida
+(`confirm`, `loading`, `success`, `incident`, `incidents`) conservaron su
+código real intacto y solo incorporaron el componente de marca
+(`BrandHeader`), para quedar visualmente consistentes con el resto sin
+resignar ningún dato real. Se descartaron sin tocar, además, dos carpetas
+completas de esa branch (`AppMicroSOAR/terraform/` y `AppMicroSOAR/docs/`)
+que resultaron ser copias duplicadas de la infraestructura y la
+documentación reales de la raíz del repo — adoptarlas hubiera dejado dos
+versiones de la infraestructura y de la documentación conviviendo sin que
+nada avisara del conflicto.
+
+### Un bug de producción encontrado por el propio usuario
+
+Ya con todo deployado a la instancia real de AWS, el login desde el
+celular físico empezó a fallar con "Invalid credentials" a pesar de usar
+la contraseña correcta. El diagnóstico se hizo por descarte, de afuera
+hacia adentro: primero se confirmó que el servidor respondía bien
+probando el login directo contra la instancia; después se confirmó que
+Tailscale y la conectividad del celular estaban bien, pidiéndole a la app
+del navegador del propio teléfono la misma URL que usa la app y
+verificando que respondiera. Con la red y el servidor descartados como
+causa, quedaba solo la propia lógica de la app — y ahí apareció el
+problema real: el limitador de intentos de `/auth/login` (agregado en la
+sesión anterior, 5 intentos cada 15 minutos) ya se había agotado durante
+las pruebas, y el bloque `catch` del login mostraba el mismo texto
+genérico de "credenciales inválidas" para cualquier error, sin distinguir
+un `401` real de un `429` de límite excedido.
+
+La solución tuvo dos partes. La inmediata, para destrabar la prueba, fue
+reiniciar el proceso del orchestrator — el contador del limitador vive en
+memoria, así que un reinicio lo resetea sin tocar nada más. La de fondo
+fue ampliar el límite a 20 intentos (sigue siendo insignificante para un
+ataque de fuerza bruta automatizado real, pero deja margen de sobra para
+los typos de una demo en vivo) y diferenciar el mensaje de error según el
+código de estado de la respuesta, para que un límite excedido nunca vuelva
+a leerse como una contraseña incorrecta.
+
+### Resultado
+
+Al cierre de la sesión, la app no tiene ningún dato mockeado restante
+—dashboard, perfil, actividad, incidentes— y el diseño visual de Lola quedó
+incorporado donde sumaba, sin heredar ninguna de sus regresiones a datos
+simulados. El incidente de git, aunque costó tiempo, terminó siendo también
+la confirmación de que la disciplina de no mergear la branch completa el
+24/08 había sido la decisión correcta: la misma branch, tres semanas
+después, seguía teniendo el mismo problema de fondo.
+
+### Próximo paso
+
+Video de respaldo y ensayo cronometrado del guion completo — lo único que
+queda de cara al 1 de septiembre que no es código.
+
+---
+
 ## Entrada 4 — 2026-08-26: Se conecta el webhook real de Wazuh — primera detección automática de punta a punta
 
 ### Contexto

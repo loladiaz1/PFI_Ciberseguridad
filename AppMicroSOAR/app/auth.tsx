@@ -4,10 +4,12 @@ import { useState } from "react";
 import * as LocalAuthentication from "expo-local-authentication";
 import Colors from "../styles/colors";
 import BottomNav from "@/components/BottomNav";
+import { BrandHeader } from "@/components/ui/BrandHeader";
+import type { MitigationAction } from "@/types";
 
 export default function AuthScreen(){
 
-const { id } = useLocalSearchParams<{ id: string }>();
+const { id, action } = useLocalSearchParams<{ id: string; action: MitigationAction }>();
 const [error, setError] = useState("");
 
 const authenticate = async () => {
@@ -22,11 +24,13 @@ const authenticate = async () => {
     }
 
     const result = await LocalAuthentication.authenticateAsync({
-        promptMessage: "Confirm it's you to block this IP",
+        promptMessage: action === "isolate-host"
+            ? "Confirm it's you to isolate this host"
+            : "Confirm it's you to block this IP",
     });
 
     if (result.success) {
-        router.push({ pathname: "/confirm", params: { id } });
+        router.push({ pathname: "/confirm", params: { id, action } });
     } else if (result.error !== "user_cancel") {
         setError("Authentication failed. Try again.");
     }
@@ -35,6 +39,10 @@ const authenticate = async () => {
 return(
 
 <View style={styles.container}>
+
+<BrandHeader />
+
+<View style={styles.content}>
 
 <Text style={styles.icon}>🛡️</Text>
 
@@ -63,6 +71,9 @@ Authenticate
 </Text>
 
 </TouchableOpacity>
+
+</View>
+
 <BottomNav />
 
 </View>
@@ -75,9 +86,13 @@ const styles = StyleSheet.create({
 
   container:{
     flex:1,
+    backgroundColor:Colors.background,
+  },
+
+  content:{
+    flex:1,
     justifyContent:"center",
     alignItems:"center",
-    backgroundColor:Colors.background,
     padding:25
   },
 
