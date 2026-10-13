@@ -41,7 +41,6 @@ jobs:
       TF_VAR_ubuntu_ami_id: ${{ vars.TF_UBUNTU_AMI_ID }}
       TF_VAR_public_key_path: ${{ github.workspace }}/terraform/ci_key.pub
       SSH_PUBLIC_KEY: ${{ vars.SSH_PUBLIC_KEY }}
-      ROLE_ARN: ${{ vars.ACTIONS_DEPLOY_ROLE_ARN }}
     steps:
       - uses: actions/checkout@v4
 
@@ -49,14 +48,14 @@ jobs:
         # Critico aca: sin AMI fijo, el apply podria REEMPLAZAR las 3
         # instancias (most_recent). Mejor no aplicar nada.
         run: |
-          for v in ROLE_ARN TF_VAR_my_ip TF_VAR_ubuntu_ami_id SSH_PUBLIC_KEY; do
+          for v in TF_VAR_my_ip TF_VAR_ubuntu_ami_id SSH_PUBLIC_KEY; do
             if [ -z "${!v}" ]; then echo "Falta $v (ver Secrets/Variables del repo)" >&2; exit 1; fi
           done
           echo "$SSH_PUBLIC_KEY" > ci_key.pub
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ vars.ACTIONS_DEPLOY_ROLE_ARN }}
+          role-to-assume: arn:aws:iam::530390084140:role/micro-soar-github-actions-deploy # no es secreto: la trust policy (cicd.tf) decide quien lo asume
           aws-region: us-east-1
 
       - uses: hashicorp/setup-terraform@v3
@@ -96,7 +95,7 @@ jobs:
     steps:
       - uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ vars.ACTIONS_DEPLOY_ROLE_ARN }}
+          role-to-assume: arn:aws:iam::530390084140:role/micro-soar-github-actions-deploy # no es secreto: la trust policy (cicd.tf) decide quien lo asume
           aws-region: us-east-1
 
       - name: Buscar la instancia del orchestrator por tag
