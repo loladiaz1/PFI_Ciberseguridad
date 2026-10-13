@@ -8,7 +8,8 @@
     "dev": "node --watch src/app.js",
     "pretest": "prisma db push",
     "test": "jest --runInBand",
-    "block-ip": "node block_ip.js"
+    "block-ip": "node block_ip.js",
+    "test:coverage": "npm test -- --coverage"
   },
   "dependencies": {
     "@prisma/client": "^5.19.1",
@@ -31,6 +32,22 @@
   "jest": {
     "setupFiles": [
       "<rootDir>/tests/jest.setup.js"
-    ]
+    ],
+    "collectCoverageFrom": [
+      "src/**/*.js"
+    ],
+    "coverageReporters": [
+      "text",
+      "html",
+      "json-summary"
+    ],
+    "coverageThreshold": {
+      "global": {
+        "statements": 85,
+        "branches": 85,
+        "functions": 85,
+        "lines": 85
+      }
+    }
   }
 }

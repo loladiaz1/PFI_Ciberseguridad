@@ -21,3 +21,9 @@ node_modules/
 
 # Documentacion tecnica interna (solo local, no para el repo remoto)
 ARQUITECTURA_TECNICA.md
+
+# Reportes de cobertura de Jest (se regeneran con npm run test:coverage)
+coverage/
+
+# Anexo de pruebas: el HTML es intermedio, se versiona el PDF
+docs/anexo-pruebas/anexo-pruebas.html
