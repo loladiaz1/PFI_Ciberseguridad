@@ -105,7 +105,10 @@ jobs:
 
       - run: npm ci
 
-      - run: npm test
+      - name: Tests + cobertura (falla si baja de 85%, ver coverageThreshold en package.json)
+        run: |
+          set -o pipefail
+          npm run test:coverage 2>&1 | tee coverage.txt
         env:
           # Valores dummy -- los tests no necesitan infra real, ver
           # tests/jest.setup.js (nunca pegan a APIs externas).
@@ -113,3 +116,21 @@ jobs:
           AUTH_USER: "ci"
           AUTH_PASSWORD: "ci-test-password"
           JWT_SECRET: "ci-only-not-for-prod"
+
+      - name: Resumen de cobertura en la pagina del run
+        if: always()
+        run: |
+          {
+            echo "### Cobertura del orchestrator (umbral: 85%)"
+            echo '```'
+            grep '|' coverage.txt || echo "sin reporte"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Reporte HTML de cobertura (artefacto descargable)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cobertura-orchestrator
+          path: orchestrator/coverage/
+          if-no-files-found: ignore
