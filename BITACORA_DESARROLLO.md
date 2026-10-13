@@ -10,6 +10,128 @@
 
 ---
 
+## Entrada 8 — 2026-10-06 al 13/10: El pipeline funcionando, el aislamiento real, y 1.320 alertas que nadie había pedido
+
+### Contexto
+
+La entrada anterior dejó el despliegue automático a medio camino y el caso de
+uso CU-02 (aislar un endpoint infectado) con la detección validada pero la
+acción nunca ejecutada contra Wazuh real. Estas sesiones cerraron las dos
+cosas, y al verificarlas apareció un problema que no estaba en ningún plan:
+el sistema estaba generando cientos de incidentes que no correspondían a
+ningún ataque.
+
+### La app para dos casos de uso
+
+La app solo sabía bloquear una IP. Se generalizó el flujo de respuesta
+(autenticación biométrica → confirmación → ejecución → resultado) para que
+la acción dependa del tipo de incidente: si el incidente tiene una IP
+atacante (fuerza bruta, CU-01) se ofrece **bloquear IP**; si no la tiene
+(malware en el host, CU-02) se ofrece **aislar host**. El step-up biométrico
+se mantiene para las dos: el plan lo define como irrenunciable para
+cualquier acción crítica. Se sumó además la tarjeta de inteligencia de
+amenazas, que muestra en el detalle del incidente lo que VirusTotal y
+AbuseIPDB saben de la IP atacante.
+
+### El aislamiento que decía funcionar y no funcionaba
+
+La primera prueba real de CU-02 fue engañosa: la app mostró éxito, la API de
+Wazuh respondió OK, pero el endpoint seguía aceptando conexiones. Ningún log
+registraba un error. La causa: cuando la API de Wazuh recibe un comando con
+el prefijo `!`, ejecuta un archivo con ese **nombre exacto** en el agente. El
+bloqueo funcionaba porque el ejecutable se llama `firewall-drop`, sin
+extensión; el script de aislamiento se había instalado como
+`isolate-host.sh`, y el agente buscaba `isolate-host`. Al no encontrarlo,
+no hacía nada y no avisaba. Corregido el nombre, el aislamiento funcionó: el
+endpoint dejó de aceptar conexiones nuevas mientras el agente de Wazuh
+seguía reportando al manager, que es exactamente el diseño (cortar todo
+salvo el canal que permite revertir la acción).
+
+Es el mismo patrón que ya había aparecido en agosto con el bloqueo: un
+sistema que confirma una acción que no ejecutó. Por eso las pruebas
+automatizadas posteriores priorizan justamente ese modo de falla.
+
+### El pipeline, sin el gate que se había diseñado
+
+El diseño original preveía una aprobación manual en GitHub (un Environment
+con revisores) antes de aplicar cambios de infraestructura. Al
+configurarlo apareció que requiere permisos de administrador del
+repositorio, que el equipo no tiene. En lugar de forzar la configuración se
+reemplazó por dos frenos que no dependen de ella: el merge del Pull Request
+pasa a ser la aprobación humana, después de leer el plan de Terraform que el
+CI comenta automáticamente en el PR; y el propio pipeline aborta si el plan
+destruye o reemplaza cualquier recurso. El segundo freno ataja exactamente
+el incidente del 26/08 (un plan que proponía reemplazar las tres instancias
+por un falso positivo) aunque nadie lea el plan.
+
+Había además una razón de seguridad para no insistir con el Environment:
+cuando un job de GitHub usa uno, la identidad que presenta ante AWS cambia
+de "rama main" a "environment production". Aceptarla obligaba a ampliar la
+política de confianza del rol de despliegue, y sin reglas de rama en el
+Environment (que también requieren administrador) cualquier rama podría
+haber asumido el rol. Se mantuvo la restricción original: solo `main`.
+
+La primera ejecución real en GitHub encontró dos errores que localmente no
+se veían: GitHub reserva el prefijo `GITHUB_` en los nombres de variables, y
+dos pruebas dependían de un valor que en la notebook venía del archivo
+`.env` local, inexistente en el servidor de CI. Corregidos, el 13/10 corrió
+el primer despliegue automático completo: merge → plan → freno → apply →
+actualización del orquestador por AWS SSM, sin SSH y sin credenciales
+guardadas.
+
+### 1.334 incidentes
+
+Al verificar ese primer despliegue desde la app, el analista vio más de
+1.300 incidentes, cuando una semana antes había una docena. Una consulta a
+la base mostró que 1.320 no eran ataques: eran cambios de archivos del
+sistema y paquetes instalados por las actualizaciones automáticas de
+Ubuntu, que llegaban en tandas a las 06 y a las 11 UTC. Dos configuraciones,
+correctas cada una por separado, se combinaban mal: el monitoreo de
+integridad de archivos (activado para CU-02) vigilaba también las carpetas
+del sistema, y la integración que envía alertas al orquestador dejaba pasar
+cualquier alerta a partir de cierto nivel de severidad, sin mirar su tipo.
+
+Es, a escala de laboratorio, el problema central que un SOAR tiene que
+resolver: la **fatiga de alertas**. Un analista de guardia que abre la app a
+las 3 de la mañana y encuentra 1.300 alertas no encuentra el ataque real. Se
+filtró en tres capas: el manager de Wazuh solo envía las familias de reglas
+de los casos de uso (fallas de autenticación compuestas y detecciones de
+VirusTotal); el orquestador aplica el mismo criterio de forma versionada y
+probada, para no depender solo de configuración manual del servidor; y el
+monitoreo de integridad del endpoint se redujo a la carpeta del caso de uso.
+Una prueba con un archivo malicioso nuevo confirmó que lo relevante sigue
+llegando. La base de producción se depuró con un script que por defecto
+solo muestra lo que borraría, previo respaldo: de 1.335 a 15 incidentes
+reales.
+
+El filtro tiene un costo que conviene explicitar: la regla que detecta
+varios intentos fallidos seguidos de un login exitoso (40112) quedó afuera,
+aunque es de alto valor, porque en las pruebas se disparaba con la propia
+laptop del administrador. Queda anotada para evaluarla.
+
+### Cobertura de pruebas
+
+Para la entrega del 20/10 se pidió una cobertura superior al 85%. El punto
+de partida era 76% de líneas, y el hueco principal estaba en el cliente de
+la API de Wazuh (14%): todas las pruebas lo reemplazaban por un simulacro,
+así que el código que habla con Wazuh nunca se probaba. Se agregaron pruebas
+para los modos de falla reales del proyecto (Wazuh respondiendo "OK" con la
+acción fallida en el cuerpo de la respuesta) y para la tolerancia a fallas de
+los servicios auxiliares (que una caída de VirusTotal o de la auditoría no
+interrumpa el registro de un incidente ni el login). Resultado: 98,9% de
+líneas, 91,5% de ramas, 96,9% de funciones, 49 pruebas. El umbral quedó como
+regla del CI: si la cobertura baja del 85%, el cambio no se integra. El
+anexo de pruebas de la tesis se genera automáticamente desde la corrida real,
+para que sus números nunca se desincronicen del código.
+
+### Próximo paso
+
+Revisar el anexo para la entrega del 20/10 y abordar la agenda de
+arquitectura: base de datos gestionada, escalabilidad, firewall de
+perímetro y disponibilidad.
+
+---
+
 ## Entrada 7 — 2026-10-05: Automatizar el deploy, y descubrir que la infraestructura no tenía memoria
 
 ### Contexto

@@ -48,7 +48,7 @@ Todo lo que no sostenga este flujo es secundario para la demo.
 - [x] Comunicación app↔orquestador por Tailscale (no IP pública)
 
 ### Entra si sobra tiempo (si no, va al video / a preguntas)
-- [x] Enriquecimiento VT/AbuseIPDB **cacheado** (02/10 — implementado y validado contra APIs reales; UI agregada 06/10, falta probarla en celular)
+- [x] Enriquecimiento VT/AbuseIPDB **cacheado** (02/10 — implementado y validado contra APIs reales; UI probada en celular contra infra real el 08/10)
 - [x] Audit log visible en la app
 
 ### Fuera del MVP (trabajo futuro, para la defensa)
@@ -56,7 +56,7 @@ Todo lo que no sostenga este flujo es secundario para la demo.
 - Módulo de IA / triaje ML
 - Redis (instalado por el bootstrap, no integrado — "se activa al escalar")
 - Four-Eyes, phishing
-- ~~Aislamiento de host~~ (CU-02): detección real funcionando de punta a punta (02/10, ver `progress.md`); la acción de aislamiento está escrita y deployada pero sin probar contra Wazuh real todavía; UI agregada 06/10 sin probar en celular — sigue sin estar "listo para demo"
+- ~~Aislamiento de host~~ (CU-02): **listo** — detección real (02/10) y aislamiento real desde el celular con step-up (08/10), ver `progress.md`. Falta solo un botón para revertir el aislamiento (hoy: reiniciar la víctima). Candidato a sumar a la demo
 
 ## 5. Arquitectura de la demo
 
@@ -144,7 +144,7 @@ Modelo `Incident` canónico (interno, NO la alerta cruda de Wazuh):
 
 ### Fase 3 — Step-up + enriquecimiento (12–14 ago → cerrada 02/10) — ✅ Listo
 - [x] Biometría/PIN antes de la acción crítica
-- [x] Enriquecimiento VT/AbuseIPDB cacheado (backend validado; UI agregada 06/10, falta probarla en celular)
+- [x] Enriquecimiento VT/AbuseIPDB cacheado (backend validado; UI probada en celular el 08/10)
 - [x] Audit log
 - **Listo cuando:** la acción pide biometría y la alerta muestra contexto de la IP.
   Confirmado 02/10: enriquecimiento validado contra APIs reales (ver `progress.md`).
@@ -152,6 +152,8 @@ Modelo `Incident` canónico (interno, NO la alerta cruda de Wazuh):
 ### Fase 4 — Hardening y ensayo (15–18 ago → extendido a 1 sep) — 🟡 En progreso
 - [x] Instrumentar tiempos (timestamp alerta vs acción — `elapsedMs` en la app)
 - [x] Cerrar security groups, revisar exposición (puerto 8000 confirmado no expuesto a internet)
+- [x] Filtrar el ruido de alertas: solo los grupos de los casos de uso generan incidente, en el manager y en el orchestrator (13/10: 1335 → 15 incidentes reales)
+- [x] UI sin destellos blancos al navegar (13/10)
 - [ ] **Video de respaldo** del flujo completo
 - [ ] **Ensayar 3× cronometrado** (< 5 min)
 - **Listo cuando:** corro la demo entera en < 5 min sin salirme del guion.
@@ -162,7 +164,7 @@ Si algo se atrasa, se recorta en este orden:
 2. Audit log visible → a preguntas
 3. Step-up es **irrenunciable** (es medio diferencial). No se recorta.
 
-### CI/CD — deploy automático (agregado 05/10) — 🟡 En progreso
+### CI/CD — deploy automático (agregado 05/10 → cerrado 13/10) — ✅ Listo
 - [x] Workflows `ci.yml` (plan + tests en PRs) y `deploy.yml` (apply gateado + deploy SSM en push a `main`)
 - [x] Roles OIDC (CI solo-lectura / deploy restringido a `main`) e instance profile SSM aplicados
 - [x] State de Terraform reconstruido (`terraform import`) y AMI fijado
@@ -174,7 +176,15 @@ Si algo se atrasa, se recorta en este orden:
 - [x] ~~Environment `production`~~ descartado (13/10: requiere admin del repo). Reemplazo: el merge del PR es la aprobación humana + `deploy.yml` aborta solo si el plan destruye o reemplaza algún recurso
 - [x] `~/orchestrator` migrado a clone de git en `/home/ubuntu/PFI_Ciberseguridad` (08/10; `.env` con `chmod 600`, pm2 `orchestrator` corriendo desde `orchestrator/`). La carpeta vieja `~/orchestrator` queda de respaldo hasta el primer deploy exitoso.
 - [x] PR #2 a `main`: CI en verde, plan sin cambios de recursos, **primer deploy automático completo** (13/10)
-- **Listo cuando:** un merge a `main` pide aprobación, aplica Terraform sin reemplazar instancias, y deploya el orchestrator sin SSH.
+- [ ] Mejora: que el deploy no falle si el orchestrator está apagado (hoy el job falla en "Buscar la instancia"; ver `progress.md`, 13/10)
+- **Listo cuando:** un merge a `main` ~~pide aprobación~~ (el merge del PR es la aprobación), aplica Terraform sin reemplazar instancias, y deploya el orchestrator sin SSH. Cumplido 13/10.
+
+### Calidad — tests y cobertura (agregado 13/10, pedido para la entrega del 20/10) — ✅ Listo
+- [x] Cobertura del orchestrator > 85% en las 4 métricas: 98,9% líneas, 91,5% ramas, 96,9% funciones, 98,4% sentencias (49 tests)
+- [x] Umbral de 85% obligatorio (`coverageThreshold`): el CI falla si baja; tabla en el resumen del run y reporte HTML como artefacto
+- [x] Anexo para la tesis: `docs/anexo-pruebas/anexo-pruebas.pdf`, regenerable desde la corrida real de Jest
+- [ ] Revisar el anexo antes del 20/10 (tono de los nombres de tests, carátula, numeración)
+- Fuera de alcance por decisión del equipo: tests automatizados de la app móvil (se valida E2E en el celular)
 
 ## 9. Diseño para escalar (cuesta casi lo mismo ahora)
 - Orquestador normaliza a `Incident` canónico (no propaga la alerta cruda).
@@ -191,6 +201,8 @@ Si algo se atrasa, se recorta en este orden:
 | Conectividad falla en la presentación | Video de respaldo |
 | FCM (push) come tiempo | Caer a polling con app abierta; el "buzz 3am" va al video |
 | Algo se rompe cerca del 18 | AMI de respaldo para restaurar en minutos |
+| Ruido de alertas tapa el ataque en la demo | Filtro por grupos de reglas en el manager y en el orchestrator (13/10) |
+| Un deploy rompe o destruye infraestructura | PR con plan comentado + freno automático anti-destroy + tests con umbral de cobertura en CI |
 
 ## 11. Definición de "demo exitosa"
 - [x] El bloqueo se ve (antes/después del atacante en pantalla)
