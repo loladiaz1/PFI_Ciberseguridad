@@ -4,3 +4,8 @@
 // promesas sin resolver que Jest reporta como "did not exit").
 delete process.env.VT_API_KEY;
 delete process.env.ABUSEIPDB_API_KEY;
+
+// wazuh.js esta mockeado en los tests que lo usan, pero app.js le pasa
+// process.env.WAZUH_HOST -- en CI no hay .env y llegaba undefined. Valor
+// fijo y no resoluble (.invalid): nunca se le pega de verdad.
+process.env.WAZUH_HOST = "https://wazuh.invalid:55000";
