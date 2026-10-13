@@ -1,7 +1,7 @@
 const express = require("express");
 const rateLimit = require("express-rate-limit");
 const { prisma } = require("./db");
-const { normalizeWazuhAlert } = require("./normalize");
+const { normalizeWazuhAlert, isRelevantAlert } = require("./normalize");
 const { authenticate, blockIp, isolateHost } = require("./wazuh");
 const { enrichIp } = require("./enrichment");
 const { login, requireAuth } = require("./auth");
@@ -46,6 +46,12 @@ app.post("/api/v1/webhook/wazuh", async (req, res) => {
     fields = normalizeWazuhAlert(req.body);
   } catch (err) {
     return res.status(422).json({ detail: err.message });
+  }
+
+  // 202 y no 4xx: la alerta es valida, simplemente no es de un caso de uso.
+  // Wazuh no debe reintentarla ni loguearla como error de integracion.
+  if (!isRelevantAlert(req.body)) {
+    return res.status(202).json({ ignored: true, ruleId: fields.ruleId });
   }
 
   const incident = await prisma.incident.create({ data: fields });

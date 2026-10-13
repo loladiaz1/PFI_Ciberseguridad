@@ -173,7 +173,7 @@ Si algo se atrasa, se recorta en este orden:
 - [x] Variables y secrets cargados en GitHub (08/10)
 - [x] ~~Environment `production`~~ descartado (13/10: requiere admin del repo). Reemplazo: el merge del PR es la aprobación humana + `deploy.yml` aborta solo si el plan destruye o reemplaza algún recurso
 - [x] `~/orchestrator` migrado a clone de git en `/home/ubuntu/PFI_Ciberseguridad` (08/10; `.env` con `chmod 600`, pm2 `orchestrator` corriendo desde `orchestrator/`). La carpeta vieja `~/orchestrator` queda de respaldo hasta el primer deploy exitoso.
-- [ ] PR de prueba a `main`: CI en verde y plan con `No changes`
+- [x] PR #2 a `main`: CI en verde, plan sin cambios de recursos, **primer deploy automático completo** (13/10)
 - **Listo cuando:** un merge a `main` pide aprobación, aplica Terraform sin reemplazar instancias, y deploya el orchestrator sin SSH.
 
 ## 9. Diseño para escalar (cuesta casi lo mismo ahora)
