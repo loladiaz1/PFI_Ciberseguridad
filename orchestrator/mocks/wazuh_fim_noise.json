@@ -1,0 +1,19 @@
+{
+  "timestamp": "2026-10-07T06:14:02.118+0000",
+  "rule": {
+    "level": 7,
+    "description": "Integrity checksum changed.",
+    "id": "550",
+    "groups": ["ossec", "syscheck", "syscheck_entry_modified", "syscheck_file"]
+  },
+  "agent": {
+    "id": "001",
+    "name": "ip-172-31-38-63"
+  },
+  "syscheck": {
+    "path": "/usr/bin/apt",
+    "event": "modified"
+  },
+  "id": "1791360842.123456",
+  "location": "syscheck"
+}
