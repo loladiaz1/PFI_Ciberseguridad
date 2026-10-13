@@ -107,7 +107,9 @@ _(La más reciente arriba. Formato fijo por entrada.)_
     3. **Víctima** (`ossec.conf` del agente, backup `ossec.conf.bak-2026-10-13-fim`): FIM solo sobre `dropzone`; `/etc,/usr/bin,/usr/sbin` y `/bin,/sbin,/boot` comentados.
   - Verificado contra infra real: EICAR nuevo (`eicar-filtro-test.com`) llegó como incidente #1335; el rootcheck que dispara el reinicio del agente ya no generó incidente.
   - `orchestrator/scripts/limpiar-ruido.js`: borra solo incidentes `new` de las reglas de ruido + su auditoría; por defecto solo muestra qué borraría (`--confirmar` para borrar).
-- **En progreso / a medias:** limpieza de la base de producción (1320 incidentes) pendiente de correr a mano, con backup antes — el borrado masivo no se hizo desde Claude.
+  - PR #3 (`feature/filtro-alertas`) mergeado → segundo deploy automático OK (instancia en `10a7273`).
+  - **Limpieza de producción hecha a mano** (backup `~/soar.db.bak-2026-10-13` en la instancia): 1320 incidentes de ruido + 1320 eventos de auditoría borrados; **1335 → 15 incidentes**, los 5 mitigados intactos.
+- **En progreso / a medias:** —
 - **Errores encontrados:** ver tabla (variables `GITHUB_*`, `WAZUH_HOST` en CI).
 - **Próximo paso concreto:** PR de `feature/filtro-alertas` → merge → deploy automático; backup de `soar.db` y `node scripts/limpiar-ruido.js --confirmar` en la instancia. Después, la agenda de arquitectura (ver sesión 08/10).
 - **Estado de instancias AWS:** las 3 **running** — apagarlas al terminar.
