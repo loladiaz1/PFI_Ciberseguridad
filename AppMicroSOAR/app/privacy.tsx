@@ -14,7 +14,7 @@ const SECTIONS: { title: string; body: string[] }[] = [
         title: "Responsable y finalidad",
         body: [
             "Micro-SOAR trata datos personales con una única finalidad: la detección y respuesta a incidentes de seguridad informática por parte del equipo de seguridad que opera la plataforma.",
-            "Responsable de la base de datos: [completar: organización responsable y contacto].",
+            "Responsable de la base de datos: Fortia Micro-SOAR.",
         ],
     },
     {
