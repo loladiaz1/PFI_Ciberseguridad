@@ -206,6 +206,11 @@ export default function ProfileScreen() {
           <Text style={styles.logoutButtonText}>Log Out</Text>
         </TouchableOpacity>
 
+        <TouchableOpacity style={styles.adminButton} onPress={() => router.push("/automation")}>
+          <MaterialCommunityIcons name="robot-outline" size={18} color={Colors.primary} />
+          <Text style={styles.adminButtonText}>Automation</Text>
+        </TouchableOpacity>
+
         {user.role === "admin" ? (
           <TouchableOpacity style={styles.adminButton} onPress={() => router.push("/users")}>
             <MaterialCommunityIcons name="account-group" size={18} color={Colors.primary} />

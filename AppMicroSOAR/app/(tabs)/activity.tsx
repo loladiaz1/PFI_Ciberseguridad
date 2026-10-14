@@ -19,6 +19,9 @@ const ICONS: Record<string, keyof typeof MaterialCommunityIcons.glyphMap> = {
   user_registered: "account-plus",
   user_updated: "account-edit",
   user_removed: "account-remove-outline",
+  automation_simulated: "robot-outline",
+  automation_failed: "robot-dead-outline",
+  automation_updated: "tune-variant",
 };
 
 export default function ActivityScreen() {

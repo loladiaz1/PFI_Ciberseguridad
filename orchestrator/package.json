@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node src/app.js",
     "dev": "node --watch src/app.js",
-    "pretest": "prisma db push",
+    "pretest": "prisma generate || node -e \"console.warn('prisma generate omitido: el cliente esta en uso (servidor local corriendo?); se usa el ya generado')\"",
     "test": "jest --runInBand",
     "block-ip": "node block_ip.js",
     "test:coverage": "npm test -- --coverage"
@@ -49,6 +49,7 @@
         "functions": 85,
         "lines": 85
       }
-    }
+    },
+    "globalSetup": "<rootDir>/tests/globalSetup.js"
   }
 }

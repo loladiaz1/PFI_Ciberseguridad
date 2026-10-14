@@ -31,6 +31,13 @@ model Incident {
   alertCount      Int       @default(1)
   ruleIds         String?
   lastSeenAt      DateTime?
+  // Motores de VirusTotal que detectan el archivo (CU-02), de la alerta.
+  hashPositives   Int?
+  // Automatizacion (src/automation.js): none | simulated | executed | failed,
+  // la politica que aplico y el motivo (tambien cuando no aplico ninguna).
+  automationDecision String?
+  automationPolicy   String?
+  automationReason   String?
   enrichmentVt        String?
   enrichmentAbuseIpdb String?
 
@@ -65,4 +72,42 @@ model AuditEvent {
   createdAt DateTime @default(now())
 
   @@map("audit_events")
+}
+
+// --- Automatizacion de la respuesta (src/automation.js) -------------------
+// Valores iniciales en config/automation.defaults.json; despues los edita un
+// admin desde la app.
+
+model AutomationSettings {
+  id                 Int      @id @default(1)
+  mode               String   @default("simulate") // off | simulate | active
+  allowlist          String   @default("[]") // JSON: IPs / CIDR que nunca se bloquean
+  defaultCriticality String   @default("medium") // para agentes fuera del inventario
+  updatedAt          DateTime @updatedAt
+  updatedBy          String?
+
+  @@map("automation_settings")
+}
+
+model AutomationPolicy {
+  id         Int      @id @default(autoincrement())
+  key        String   @unique
+  name       String
+  order      Int
+  enabled    Boolean  @default(false)
+  useCase    String // CU-01 | CU-02
+  action     String // block-ip | isolate-host
+  conditions String // JSON, ver failedConditions() en src/automation.js
+  updatedAt  DateTime @updatedAt
+
+  @@map("automation_policies")
+}
+
+// Inventario de activos: criticidad de cada agente de Wazuh.
+model Asset {
+  agentId     String @id
+  name        String
+  criticality String @default("medium") // low | medium | high | critical
+
+  @@map("assets")
 }

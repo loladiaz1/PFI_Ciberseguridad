@@ -23,6 +23,11 @@ export interface Incident {
   // Agrupamiento: alertas del mismo ataque sumadas a este incidente.
   alertCount: number;
   ruleIds: string | null; // JSON con todas las reglas; null = solo ruleId
+  hashPositives: number | null;
+  // Decision de la automatizacion (orchestrator/src/automation.js).
+  automationDecision: 'none' | 'simulated' | 'executed' | 'failed' | null;
+  automationPolicy: string | null;
+  automationReason: string | null;
 }
 
 export interface ActivityItem {
@@ -33,6 +38,41 @@ export interface ActivityItem {
 }
 
 export type Role = 'admin' | 'analyst' | 'auditor';
+
+export type AutomationMode = 'off' | 'simulate' | 'active';
+export type Criticality = 'low' | 'medium' | 'high' | 'critical';
+
+export interface PolicyConditions {
+  minSeverity?: number;
+  minAbuseScore?: number;
+  minVtMalicious?: number;
+  minHashPositives?: number;
+  fromCountries?: string[];
+  maxAssetCriticality?: Criticality;
+}
+
+export interface AutomationPolicy {
+  id: number;
+  key: string;
+  name: string;
+  order: number;
+  enabled: boolean;
+  useCase: 'CU-01' | 'CU-02';
+  action: 'block-ip' | 'isolate-host';
+  conditions: PolicyConditions;
+}
+
+export interface Asset {
+  agentId: string;
+  name: string;
+  criticality: Criticality;
+}
+
+export interface AutomationConfig {
+  settings: { mode: AutomationMode; allowlist: string[]; defaultCriticality: Criticality; updatedBy: string | null; updatedAt: string };
+  policies: AutomationPolicy[];
+  assets: Asset[];
+}
 export type UserStatus = 'pending' | 'active' | 'disabled';
 
 export interface UserProfile {

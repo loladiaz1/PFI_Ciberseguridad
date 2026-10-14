@@ -152,6 +152,40 @@ export default function IncidentDetail() {
                     </View>
                 ) : null}
 
+                {/* Decision de la automatizacion (orchestrator/src/automation.js) */}
+                {incident.automationDecision && incident.automationDecision !== "none" ? (
+                    <View
+                        style={[
+                            styles.automation,
+                            {
+                                borderColor:
+                                    incident.automationDecision === "executed" ? Colors.success
+                                    : incident.automationDecision === "failed" ? Colors.danger
+                                    : Colors.warning,
+                            },
+                        ]}
+                    >
+                        <View style={styles.statusRow}>
+                            <MaterialIcons name="smart-toy" size={20} color={Colors.text} />
+                            <Text style={styles.automationTitle}>
+                                {incident.automationDecision === "executed" ? "Contained automatically"
+                                    : incident.automationDecision === "failed" ? "Automatic response failed: action required"
+                                    : `Simulation: would ${action === "block-ip" ? "block this IP" : "isolate this host"}`}
+                            </Text>
+                        </View>
+                        {incident.automationPolicy ? (
+                            <Text style={styles.recText}>Policy: {incident.automationPolicy}</Text>
+                        ) : null}
+                        {incident.automationDecision === "failed" ? (
+                            <Text style={styles.automationReason}>{incident.automationReason}</Text>
+                        ) : null}
+                    </View>
+                ) : incident.automationReason ? (
+                    <Text style={styles.automationReason} numberOfLines={3}>
+                        Automation: {incident.automationReason}
+                    </Text>
+                ) : null}
+
                 {mitigatedAt ? (
                     <View style={styles.recommendation}>
                         <Text style={styles.recTitle}>Already mitigated</Text>
@@ -259,6 +293,28 @@ const styles = StyleSheet.create({
         marginLeft: 8,
         fontWeight: "bold",
         fontSize: 22
+    },
+
+    automation: {
+        backgroundColor: Colors.card,
+        padding: 16,
+        borderRadius: 16,
+        marginTop: 25,
+        borderWidth: 1,
+    },
+
+    automationTitle: {
+        marginLeft: 8,
+        fontWeight: "bold",
+        fontSize: 16,
+        color: Colors.text,
+        flex: 1,
+    },
+
+    automationReason: {
+        color: Colors.textSecondary,
+        fontSize: 12,
+        marginTop: 12,
     },
 
     intel: {
