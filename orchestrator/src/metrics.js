@@ -4,9 +4,11 @@
 //     en el orquestador. Mide el pipeline de deteccion (integratord + webhook).
 //   - actionExecution: duracion de la llamada a la API de Wazuh que ejecuta
 //     la accion (bloqueo / aislamiento), medida en el servidor.
-//   - containment: alerta -> incidente mitigado. Incluye el tiempo de decision
-//     del analista; es el numero comparable con los 8-14 min del acceso
-//     remoto tradicional.
+//   - containment: alerta -> incidente mitigado POR UN ANALISTA. Incluye el
+//     tiempo de decision humana; es el numero comparable con los 8-14 min del
+//     acceso remoto tradicional.
+//   - automatedContainment: alerta -> mitigado por la automatizacion
+//     (src/automation.js). Separado para no mezclar los dos regimenes.
 // Los relojes del manager y del orquestador se sincronizan con Amazon Time
 // Sync (NTP), asi que la diferencia entre instancias es despreciable frente
 // a los valores medidos (segundos).
@@ -50,7 +52,12 @@ function computeMetrics(incidents) {
       // anteriores a la instrumentacion no tienen la cadena completa.
       containment: summarize(
         group
-          .filter((i) => i.ingestedAt && mitigatedAt(i))
+          .filter((i) => i.ingestedAt && mitigatedAt(i) && i.automationDecision !== "executed")
+          .map((i) => new Date(mitigatedAt(i)).getTime() - alertMs(i))
+      ),
+      automatedContainment: summarize(
+        group
+          .filter((i) => i.ingestedAt && mitigatedAt(i) && i.automationDecision === "executed")
           .map((i) => new Date(mitigatedAt(i)).getTime() - alertMs(i))
       ),
     };

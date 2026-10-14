@@ -2,7 +2,6 @@ const express = require("express");
 const rateLimit = require("express-rate-limit");
 const { prisma } = require("./db");
 const { normalizeWazuhAlert, isRelevantAlert } = require("./normalize");
-const { authenticate, blockIp, isolateHost } = require("./wazuh");
 const { enrichIp } = require("./enrichment");
 const {
   ROLES,
@@ -20,6 +19,15 @@ const {
 const { computeMetrics } = require("./metrics");
 const { deleteAccount } = require("./privacy");
 const { findOpenIncident, mergeAlert } = require("./grouping");
+const { logAudit } = require("./audit");
+const { mitigate } = require("./mitigation");
+const {
+  MODES,
+  CRITICALITIES,
+  ensureAutomationDefaults,
+  getAutomationConfig,
+  runAutomation,
+} = require("./automation");
 
 const app = express();
 app.use(express.json());
@@ -36,14 +44,6 @@ const loginLimiter = rateLimit({
   legacyHeaders: false,
   message: { detail: "Too many login attempts, try again later" },
 });
-
-// actor va separado del texto (no "<username> hizo X") para poder
-// seudonimizarlo al eliminar la cuenta (ver src/privacy.js).
-function logAudit(type, detail, actor = null) {
-  return prisma.auditEvent.create({ data: { type, detail, actor } }).catch((err) => {
-    console.error("No se pudo registrar el evento de auditoria:", err.message);
-  });
-}
 
 app.post("/api/v1/auth/login", loginLimiter, async (req, res) => {
   const { username, password } = req.body || {};
@@ -119,6 +119,11 @@ app.post("/api/v1/webhook/wazuh", async (req, res) => {
       data: mergeAlert(open, fields, now),
     });
     await logAudit("alert_grouped", `Rule ${fields.ruleId} added to incident #${grouped.id}`);
+    // Una alerta nueva es informacion nueva (severidad, hash, o el modo /
+    // las politicas pudieron cambiar desde la primera): se vuelve a evaluar.
+    // Si el incidente ya se mitigo, runAutomation no hace nada.
+    const reevaluation = runAutomation(grouped.id);
+    if (process.env.AUTOMATION_INLINE === "1") await reevaluation;
     return res.status(200).json({ ...grouped, grouped: true });
   }
 
@@ -136,8 +141,13 @@ app.post("/api/v1/webhook/wazuh", async (req, res) => {
   // No se espera antes de responder: Wazuh no debe quedar bloqueado por una
   // llamada a VT/AbuseIPDB. Si no hay API key configurada, enrichIp no pega
   // a la red y esto es un no-op.
+  //
+  // Automatizacion (src/automation.js): en CU-01 decide DESPUES del
+  // enriquecimiento (las politicas usan la reputacion de la IP); en CU-02 no
+  // hay IP que enriquecer y decide enseguida. Tampoco bloquea la respuesta.
+  let automation;
   if (fields.srcIp) {
-    enrichIp(fields.srcIp)
+    automation = enrichIp(fields.srcIp)
       .then(({ vt, abuseipdb }) => {
         if (!vt && !abuseipdb) return;
         return prisma.incident.update({
@@ -145,8 +155,15 @@ app.post("/api/v1/webhook/wazuh", async (req, res) => {
           data: { enrichmentVt: vt, enrichmentAbuseIpdb: abuseipdb },
         });
       })
-      .catch((err) => console.error("No se pudo enriquecer el incidente:", err.message));
+      .catch((err) => console.error("No se pudo enriquecer el incidente:", err.message))
+      .then(() => runAutomation(incident.id));
+  } else {
+    automation = runAutomation(incident.id);
   }
+  // Solo en los tests (tests/jest.setup.js): esperar a la automatizacion
+  // antes de responder, para que sea determinista y no quede trabajo
+  // corriendo despues de que el test termina. En produccion, en segundo plano.
+  if (process.env.AUTOMATION_INLINE === "1") await automation;
 
   res.status(201).json(incident);
 });
@@ -247,75 +264,119 @@ app.get("/api/v1/incidents/:id", requireAuth, async (req, res) => {
 });
 
 // Acciones de contencion: admin y analyst. El auditor es solo lectura.
-app.post("/api/v1/incidents/:id/actions/block-ip", requireAuth, requireRole("admin", "analyst"), async (req, res) => {
+// La ejecucion (Wazuh, medicion, auditoria) es la misma que usa la
+// automatizacion: src/mitigation.js.
+async function manualAction(req, res, actionName) {
   const incident = await prisma.incident.findUnique({ where: { id: Number(req.params.id) } });
   if (!incident) {
     return res.status(404).json({ detail: "Incident not found" });
   }
-  if (!incident.srcIp) {
+  if (actionName === "block-ip" && !incident.srcIp) {
     return res.status(422).json({ detail: "Este incidente no tiene IP de origen para bloquear" });
   }
 
-  // actionLatencyMs: login + ejecucion en Wazuh, lo que tarda la contencion
-  // una vez que el analista confirmo (RNF-05, ver src/metrics.js).
-  const startedAt = Date.now();
+  let updated;
   try {
-    const token = await authenticate(
-      process.env.WAZUH_HOST,
-      process.env.WAZUH_USER,
-      process.env.WAZUH_PASSWORD
-    );
-    await blockIp(process.env.WAZUH_HOST, token, incident.agentId, incident.srcIp);
+    updated = await mitigate(incident, actionName, req.user.sub);
   } catch (err) {
     return res.status(502).json({ detail: err.message });
   }
-
-  const updated = await prisma.incident.update({
-    where: { id: incident.id },
-    data: { status: "blocked", blockedAt: new Date(), actionLatencyMs: Date.now() - startedAt },
-  });
-
-  await logAudit("ip_blocked", `Blocked ${updated.srcIp} (incident #${updated.id})`, req.user.sub);
 
   res.status(200).json({
     incidentId: updated.id,
     srcIp: updated.srcIp,
-    agentId: updated.agentId,
-    status: updated.status,
-  });
-});
-
-app.post("/api/v1/incidents/:id/actions/isolate-host", requireAuth, requireRole("admin", "analyst"), async (req, res) => {
-  const incident = await prisma.incident.findUnique({ where: { id: Number(req.params.id) } });
-  if (!incident) {
-    return res.status(404).json({ detail: "Incident not found" });
-  }
-
-  const startedAt = Date.now();
-  try {
-    const token = await authenticate(
-      process.env.WAZUH_HOST,
-      process.env.WAZUH_USER,
-      process.env.WAZUH_PASSWORD
-    );
-    await isolateHost(process.env.WAZUH_HOST, token, incident.agentId);
-  } catch (err) {
-    return res.status(502).json({ detail: err.message });
-  }
-
-  const updated = await prisma.incident.update({
-    where: { id: incident.id },
-    data: { status: "isolated", isolatedAt: new Date(), actionLatencyMs: Date.now() - startedAt },
-  });
-
-  await logAudit("host_isolated", `Isolated ${updated.hostname} (incident #${updated.id})`, req.user.sub);
-
-  res.status(200).json({
-    incidentId: updated.id,
     hostname: updated.hostname,
     agentId: updated.agentId,
     status: updated.status,
   });
+}
+
+app.post("/api/v1/incidents/:id/actions/block-ip", requireAuth, requireRole("admin", "analyst"), (req, res) =>
+  manualAction(req, res, "block-ip")
+);
+
+app.post("/api/v1/incidents/:id/actions/isolate-host", requireAuth, requireRole("admin", "analyst"), (req, res) =>
+  manualAction(req, res, "isolate-host")
+);
+
+// ---------------------------------------------------------------------------
+// Automatizacion: cualquier rol la ve; solo un admin la cambia. Todo cambio
+// queda auditado (la app ademas pide step-up antes de mandarlo).
+// ---------------------------------------------------------------------------
+
+app.get("/api/v1/automation", requireAuth, async (_req, res) => {
+  res.json(await getAutomationConfig());
+});
+
+app.put("/api/v1/automation/settings", requireAuth, requireRole("admin"), async (req, res) => {
+  const { mode, allowlist } = req.body || {};
+  if (mode !== undefined && !MODES.includes(mode)) {
+    return res.status(422).json({ detail: `mode debe ser uno de: ${MODES.join(", ")}` });
+  }
+  if (allowlist !== undefined && (!Array.isArray(allowlist) || allowlist.some((e) => typeof e !== "string"))) {
+    return res.status(422).json({ detail: "allowlist debe ser una lista de IPs o CIDR" });
+  }
+
+  await ensureAutomationDefaults();
+  const data = { updatedBy: req.user.sub };
+  if (mode !== undefined) data.mode = mode;
+  if (allowlist !== undefined) data.allowlist = JSON.stringify(allowlist.map((e) => e.trim()).filter(Boolean));
+  await prisma.automationSettings.update({ where: { id: 1 }, data });
+
+  const changes = [mode !== undefined && `mode -> ${mode}`, allowlist !== undefined && `allowlist (${allowlist.length})`];
+  await logAudit("automation_updated", `Settings: ${changes.filter(Boolean).join(", ") || "no changes"}`, req.user.sub);
+  res.json(await getAutomationConfig());
+});
+
+const CONDITION_KEYS = ["minSeverity", "minAbuseScore", "minVtMalicious", "minHashPositives", "fromCountries", "maxAssetCriticality"];
+
+app.put("/api/v1/automation/policies/:id", requireAuth, requireRole("admin"), async (req, res) => {
+  const { enabled, conditions } = req.body || {};
+  const policy = await prisma.automationPolicy.findUnique({ where: { id: Number(req.params.id) } });
+  if (!policy) return res.status(404).json({ detail: "Policy not found" });
+
+  if (enabled !== undefined && typeof enabled !== "boolean") {
+    return res.status(422).json({ detail: "enabled debe ser true o false" });
+  }
+  if (conditions !== undefined) {
+    const unknown = Object.keys(conditions).filter((k) => !CONDITION_KEYS.includes(k));
+    if (unknown.length) return res.status(422).json({ detail: `Condiciones desconocidas: ${unknown.join(", ")}` });
+    const numbersOk = ["minSeverity", "minAbuseScore", "minVtMalicious", "minHashPositives"].every(
+      (k) => conditions[k] === undefined || (Number.isFinite(conditions[k]) && conditions[k] >= 0)
+    );
+    const critOk = conditions.maxAssetCriticality === undefined || CRITICALITIES.includes(conditions.maxAssetCriticality);
+    const countriesOk = conditions.fromCountries === undefined || Array.isArray(conditions.fromCountries);
+    if (!numbersOk || !critOk || !countriesOk) return res.status(422).json({ detail: "Condiciones invalidas" });
+  }
+
+  const data = {};
+  if (enabled !== undefined) data.enabled = enabled;
+  if (conditions !== undefined) data.conditions = JSON.stringify(conditions);
+  await prisma.automationPolicy.update({ where: { id: policy.id }, data });
+
+  const changes = [
+    enabled !== undefined && (enabled ? "enabled" : "disabled"),
+    conditions !== undefined && `conditions ${JSON.stringify(conditions)}`,
+  ];
+  await logAudit("automation_updated", `Policy "${policy.name}": ${changes.filter(Boolean).join(", ") || "no changes"}`, req.user.sub);
+  res.json(await getAutomationConfig());
+});
+
+// Inventario de activos: alta o cambio de criticidad de un agente.
+app.put("/api/v1/assets/:agentId", requireAuth, requireRole("admin"), async (req, res) => {
+  const { agentId } = req.params;
+  const { name, criticality } = req.body || {};
+  if (!CRITICALITIES.includes(criticality)) {
+    return res.status(422).json({ detail: `criticality debe ser una de: ${CRITICALITIES.join(", ")}` });
+  }
+
+  const asset = await prisma.asset.upsert({
+    where: { agentId },
+    update: { criticality, ...(name ? { name } : {}) },
+    create: { agentId, name: name || `agent-${agentId}`, criticality },
+  });
+  await logAudit("automation_updated", `Asset ${asset.name} (${agentId}): criticality -> ${criticality}`, req.user.sub);
+  res.json(asset);
 });
 
 app.get("/api/v1/metrics", requireAuth, async (_req, res) => {
@@ -327,6 +388,7 @@ app.get("/api/v1/metrics", requireAuth, async (_req, res) => {
       blockedAt: true,
       isolatedAt: true,
       actionLatencyMs: true,
+      automationDecision: true,
     },
   });
   res.json(computeMetrics(incidents));
@@ -345,6 +407,7 @@ if (require.main === module) {
   // Admin inicial desde AUTH_USER / AUTH_PASSWORD si todavia no hay ninguno
   // (tambien se intenta en cada login, por si la base se recreo en caliente).
   ensureBootstrapAdmin().catch((err) => console.error("No se pudo crear el admin inicial:", err.message));
+  ensureAutomationDefaults().catch((err) => console.error("No se pudo cargar la automatizacion:", err.message));
   app.listen(port, () => console.log(`Micro-SOAR Orchestrator escuchando en :${port}`));
 }
 

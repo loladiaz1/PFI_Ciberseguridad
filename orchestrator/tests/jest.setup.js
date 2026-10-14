@@ -14,3 +14,7 @@ process.env.WAZUH_HOST = "https://wazuh.invalid:55000";
 // misma alerta varias veces y necesita un incidente nuevo cada vez.
 // tests/grouping.test.js lo activa explicitamente.
 process.env.GROUP_WINDOW_MS = "0";
+
+// La automatizacion corre en segundo plano en produccion; en los tests, en
+// linea (ver el webhook en src/app.js).
+process.env.AUTOMATION_INLINE = "1";

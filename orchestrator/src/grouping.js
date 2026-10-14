@@ -39,7 +39,8 @@ function ruleIdsOf(incident) {
 }
 
 // Datos para sumar la alerta al incidente: contador, reglas sin repetir,
-// ultima actividad y la severidad mas alta vista.
+// ultima actividad, y la severidad y la deteccion del hash mas altas vistas
+// (la automatizacion vuelve a evaluar con estos valores).
 function mergeAlert(incident, fields, now = new Date()) {
   const ruleIds = ruleIdsOf(incident);
   if (!ruleIds.includes(fields.ruleId)) ruleIds.push(fields.ruleId);
@@ -48,6 +49,8 @@ function mergeAlert(incident, fields, now = new Date()) {
     ruleIds: JSON.stringify(ruleIds),
     lastSeenAt: now,
     severity: Math.max(incident.severity, fields.severity),
+    hashPositives:
+      fields.hashPositives == null ? incident.hashPositives ?? null : Math.max(incident.hashPositives ?? 0, fields.hashPositives),
   };
 }
 

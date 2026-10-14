@@ -23,8 +23,12 @@ const pamAlert = (ip) => ({
   rule: { level: 10, id: "5551", description: "PAM: Multiple failed logins in a small period of time.", groups: ["pam", "syslog", "authentication_failures"] },
 });
 
-beforeAll(() => {
+beforeAll(async () => {
   process.env.GROUP_WINDOW_MS = String(DEFAULT_WINDOW_MS);
+  // La base local persiste entre corridas: un incidente abierto de la corrida
+  // anterior (misma IP, dentro de la ventana) absorberia las alertas de esta.
+  // 192.0.2.0/24 (TEST-NET-1) y el agente 077 los usa solo este archivo.
+  await prisma.incident.deleteMany({ where: { OR: [{ srcIp: { startsWith: "192.0.2." } }, { agentId: "077" }] } });
 });
 afterAll(async () => {
   process.env.GROUP_WINDOW_MS = "0";
@@ -100,6 +104,14 @@ test("la severidad del incidente es la mas alta de sus alertas", () => {
   const merged = mergeAlert({ alertCount: 1, ruleIds: null, ruleId: "5712", severity: 10 }, { ruleId: "40112", severity: 12 });
   expect(merged.severity).toBe(12);
   expect(JSON.parse(merged.ruleIds)).toEqual(["5712", "40112"]);
+});
+
+test("se queda con la deteccion del hash mas alta (y la conserva si la alerta nueva no la trae)", () => {
+  const base = { alertCount: 1, ruleIds: null, ruleId: "87105", severity: 12, hashPositives: 11 };
+  expect(mergeAlert(base, { ruleId: "87105", severity: 12, hashPositives: 40 }).hashPositives).toBe(40);
+  expect(mergeAlert(base, { ruleId: "87105", severity: 12, hashPositives: 3 }).hashPositives).toBe(11);
+  expect(mergeAlert(base, { ruleId: "87105", severity: 12, hashPositives: null }).hashPositives).toBe(11);
+  expect(mergeAlert({ ...base, hashPositives: null }, { ruleId: "5712", severity: 10, hashPositives: null }).hashPositives).toBeNull();
 });
 
 test("incidentes anteriores al agrupamiento (ruleIds null) usan su ruleId", () => {

@@ -1,0 +1,47 @@
+{
+  "_comment": "Valores INICIALES de la automatizacion (src/automation.js). Se cargan en la base solo la primera vez (si no existen); despues los edita un admin desde la app y esos cambios mandan. Cambiar este archivo no pisa la configuracion ya cargada.",
+  "mode": "simulate",
+  "allowlist": [],
+  "defaultCriticality": "medium",
+  "assets": [
+    { "agentId": "001", "name": "victima-laboratorio", "criticality": "low" }
+  ],
+  "policies": [
+    {
+      "key": "fuerza-bruta-mala-reputacion",
+      "name": "Fuerza bruta desde IP con mala reputacion",
+      "order": 1,
+      "enabled": true,
+      "useCase": "CU-01",
+      "action": "block-ip",
+      "conditions": { "minSeverity": 10, "minAbuseScore": 80, "maxAssetCriticality": "medium" }
+    },
+    {
+      "key": "fuerza-bruta-pais-alto-riesgo",
+      "name": "Fuerza bruta desde pais de alto riesgo",
+      "order": 2,
+      "enabled": false,
+      "useCase": "CU-01",
+      "action": "block-ip",
+      "conditions": { "minSeverity": 10, "fromCountries": ["CN", "RU", "KP", "IR"], "maxAssetCriticality": "low" }
+    },
+    {
+      "key": "fuerza-bruta-laboratorio",
+      "name": "Fuerza bruta contra activo de criticidad baja (laboratorio)",
+      "order": 3,
+      "enabled": false,
+      "useCase": "CU-01",
+      "action": "block-ip",
+      "conditions": { "minSeverity": 10, "maxAssetCriticality": "low" }
+    },
+    {
+      "key": "malware-confirmado",
+      "name": "Malware confirmado por VirusTotal",
+      "order": 4,
+      "enabled": true,
+      "useCase": "CU-02",
+      "action": "isolate-host",
+      "conditions": { "minHashPositives": 10, "maxAssetCriticality": "medium" }
+    }
+  ]
+}

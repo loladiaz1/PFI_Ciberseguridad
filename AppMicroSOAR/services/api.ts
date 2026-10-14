@@ -1,5 +1,16 @@
 import { http } from './http';
-import type { ActivityItem, Incident, Role, UserProfile, UserStatus } from '../types';
+import type {
+  ActivityItem,
+  Asset,
+  AutomationConfig,
+  AutomationMode,
+  Criticality,
+  Incident,
+  PolicyConditions,
+  Role,
+  UserProfile,
+  UserStatus,
+} from '../types';
 
 export const getIncidents = async (): Promise<{ data: Incident[] }> => {
   const { data } = await http.get<Incident[]>('/api/v1/incidents');
@@ -62,6 +73,34 @@ export const updateUserAccess = async (
 
 export const removeUser = async (username: string): Promise<void> => {
   await http.delete(`/api/v1/users/${encodeURIComponent(username)}`);
+};
+
+// Automatizacion: cualquier rol la lee; solo un admin la cambia (el backend
+// devuelve 403 a los demas).
+export const getAutomation = async (): Promise<AutomationConfig> => {
+  const { data } = await http.get<AutomationConfig>('/api/v1/automation');
+  return data;
+};
+
+export const updateAutomationSettings = async (changes: {
+  mode?: AutomationMode;
+  allowlist?: string[];
+}): Promise<AutomationConfig> => {
+  const { data } = await http.put<AutomationConfig>('/api/v1/automation/settings', changes);
+  return data;
+};
+
+export const updatePolicy = async (
+  id: number,
+  changes: { enabled?: boolean; conditions?: PolicyConditions }
+): Promise<AutomationConfig> => {
+  const { data } = await http.put<AutomationConfig>(`/api/v1/automation/policies/${id}`, changes);
+  return data;
+};
+
+export const updateAsset = async (agentId: string, criticality: Criticality): Promise<Asset> => {
+  const { data } = await http.put<Asset>(`/api/v1/assets/${encodeURIComponent(agentId)}`, { criticality });
+  return data;
 };
 
 export const getAuditEvents = async (): Promise<ActivityItem[]> => {

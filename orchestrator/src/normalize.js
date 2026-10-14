@@ -1,3 +1,13 @@
+// Motores de VirusTotal que detectan el archivo (CU-02). La integracion
+// nativa de Wazuh lo manda en data.virustotal.positives; si no viene, se
+// toma de la descripcion de la regla 87105 ("... - 65 engines detected ...").
+function hashPositivesOf(alert) {
+  const raw = alert?.data?.virustotal?.positives ?? alert?.VirusTotal?.positives;
+  if (raw !== undefined && Number.isFinite(Number(raw))) return Number(raw);
+  const match = /(\d+) engines detected/.exec(alert?.rule?.description ?? "");
+  return match ? Number(match[1]) : null;
+}
+
 // Alerta cruda de Wazuh -> modelo Incident canonico (PLAN.md seccion 7).
 function normalizeWazuhAlert(alert) {
   const ruleId = alert?.rule?.id;
@@ -29,6 +39,7 @@ function normalizeWazuhAlert(alert) {
     agentId: String(agentId),
     timestamp,
     status: "new",
+    hashPositives: hashPositivesOf(alert),
   };
 }
 

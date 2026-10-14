@@ -15,6 +15,9 @@ const bearer = (token) => ({ Authorization: `Bearer ${token}` });
 let admin;
 
 beforeAll(async () => {
+  // La base local persiste entre corridas: borrar los usuarios de prueba
+  // para que los registros vuelvan a ser nuevos.
+  await prisma.user.deleteMany({ where: { username: { endsWith: "@test.dev" } } });
   admin = bearer(await adminToken());
   authenticate.mockResolvedValue("fake-token");
   blockIp.mockResolvedValue({ error: 0, data: { total_failed_items: 0 } });
