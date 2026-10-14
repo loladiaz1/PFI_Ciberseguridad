@@ -16,7 +16,7 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { BrandHeader } from "@/components/ui/BrandHeader";
 import { Header } from "@/components/Header";
 import { getStoredUser } from "@/services/auth";
-import { updateUser } from "@/services/api";
+import { deleteAccount, updateUser } from "@/services/api";
 import { clearToken } from "@/services/tokenStore";
 import Colors from "@/styles/colors";
 import type { UserProfile } from "@/types";
@@ -81,6 +81,29 @@ export default function ProfileScreen() {
         },
       },
     ]);
+  };
+
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      "Delete account",
+      "Your profile (name and email) will be permanently deleted. Security audit records are kept, but anonymized: they will no longer identify you. This cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await deleteAccount();
+              await clearToken();
+              router.replace("/");
+            } catch {
+              Alert.alert("Unable to delete account", "Something went wrong. Try again.");
+            }
+          },
+        },
+      ]
+    );
   };
 
   const saveProfile = async () => {
@@ -181,6 +204,16 @@ export default function ProfileScreen() {
         <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
           <MaterialCommunityIcons name="logout" size={18} color={Colors.danger} />
           <Text style={styles.logoutButtonText}>Log Out</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.linkButton} onPress={() => router.push("/privacy")}>
+          <MaterialCommunityIcons name="shield-account-outline" size={18} color={Colors.textSecondary} />
+          <Text style={styles.linkButtonText}>Privacy policy</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.linkButton} onPress={handleDeleteAccount}>
+          <MaterialCommunityIcons name="account-remove-outline" size={18} color={Colors.danger} />
+          <Text style={[styles.linkButtonText, { color: Colors.danger }]}>Delete account</Text>
         </TouchableOpacity>
       </ScrollView>
     </View>
@@ -316,5 +349,19 @@ const styles = StyleSheet.create({
   logoutButtonText: {
     color: Colors.danger,
     fontWeight: "700",
+  },
+
+  linkButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    marginTop: 14,
+    padding: 10,
+  },
+
+  linkButtonText: {
+    color: Colors.textSecondary,
+    fontWeight: "600",
   },
 });

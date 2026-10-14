@@ -23,6 +23,9 @@ export default function RegisterScreen() {
 
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  // Consentimiento informado (Ley 25.326, art. 5): sin aceptar la politica
+  // de privacidad no se puede crear la cuenta.
+  const [acceptedPrivacy, setAcceptedPrivacy] = useState(false);
 
   // ======================================
   // VALIDACIONES
@@ -103,6 +106,14 @@ export default function RegisterScreen() {
       Alert.alert(
         "Weak password",
         "Your password must contain at least 9 characters, one uppercase letter, one lowercase letter, one number and one special character."
+      );
+      return;
+    }
+
+    if (!acceptedPrivacy) {
+      Alert.alert(
+        "Privacy policy",
+        "You must read and accept the privacy policy to create an account."
       );
       return;
     }
@@ -308,13 +319,38 @@ export default function RegisterScreen() {
         )}
 
         {/* ================================== */}
+        {/* CONSENTIMIENTO (Ley 25.326) */}
+        {/* ================================== */}
+
+        <View style={styles.consentRow}>
+          <Pressable
+            onPress={() => setAcceptedPrivacy((v) => !v)}
+            hitSlop={8}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: acceptedPrivacy }}
+          >
+            <Ionicons
+              name={acceptedPrivacy ? "checkbox" : "square-outline"}
+              size={22}
+              color={acceptedPrivacy ? "#FF8C00" : Colors.textSecondary}
+            />
+          </Pressable>
+          <Text style={styles.consentText}>
+            I have read and accept the{" "}
+            <Text style={styles.loginLink} onPress={() => router.push("/privacy")}>
+              privacy policy
+            </Text>
+          </Text>
+        </View>
+
+        {/* ================================== */}
         {/* REGISTER */}
         {/* ================================== */}
 
         <Pressable
           style={[
             styles.button,
-            !formValid && styles.buttonDisabled,
+            (!formValid || !acceptedPrivacy) && styles.buttonDisabled,
           ]}
           onPress={handleRegister}
           disabled={loading}
@@ -565,6 +601,19 @@ const styles = StyleSheet.create({
   loginLink: {
     color: "#FF8C00",
     fontWeight: "600",
+    fontSize: 14,
+  },
+
+  consentRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 16,
+  },
+
+  consentText: {
+    flex: 1,
+    color: Colors.textSecondary,
     fontSize: 14,
   },
 

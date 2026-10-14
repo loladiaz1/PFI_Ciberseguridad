@@ -40,6 +40,12 @@ export const updateUser = async (fields: { name: string; email: string }): Promi
   return data;
 };
 
+// Derecho de supresion (Ley 25.326): borra el perfil y seudonimiza la
+// auditoria del usuario en el backend.
+export const deleteAccount = async (): Promise<void> => {
+  await http.delete('/api/v1/me');
+};
+
 export const getAuditEvents = async (): Promise<ActivityItem[]> => {
   const { data } = await http.get<ActivityItem[]>('/api/v1/audit');
   return data;

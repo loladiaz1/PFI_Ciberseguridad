@@ -45,6 +45,10 @@ model AuditEvent {
   id        Int      @id @default(autoincrement())
   type      String
   detail    String
+  // Quien ejecuto la accion (username), separado del texto para poder
+  // anonimizarlo al eliminar la cuenta sin perder el evento (Ley 25.326,
+  // ver src/privacy.js). null = evento del sistema (ej. incidente detectado).
+  actor     String?
   createdAt DateTime @default(now())
 
   @@map("audit_events")

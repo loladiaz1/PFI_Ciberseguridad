@@ -14,6 +14,7 @@ const ICONS: Record<string, keyof typeof MaterialCommunityIcons.glyphMap> = {
   incident_detected: "shield-alert",
   ip_blocked: "shield-lock",
   host_isolated: "lan-disconnect",
+  account_deleted: "account-remove",
 };
 
 export default function ActivityScreen() {
