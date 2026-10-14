@@ -15,6 +15,7 @@ import { BrandHeader } from "@/components/ui/BrandHeader";
 import { getIncidents } from "@/services/api";
 import { severityLabel } from "@/utils/severity";
 import type { Incident } from "@/types";
+import { REFRESH_MS } from "@/constants/refresh";
 
 export default function Dashboard(){
 
@@ -23,13 +24,19 @@ const [incidents, setIncidents] = useState<Incident[]>([]);
 useFocusEffect(
     useCallback(() => {
         let cancelled = false;
-        getIncidents()
-            .then(({ data }) => {
-                if (!cancelled) setIncidents(data);
-            })
-            .catch(() => {});
+        const load = () =>
+            getIncidents()
+                .then(({ data }) => {
+                    if (!cancelled) setIncidents(data);
+                })
+                .catch(() => {});
+
+        // Mismo refresco que la lista de incidentes (ver REFRESH_MS).
+        load();
+        const timer = setInterval(load, REFRESH_MS);
         return () => {
             cancelled = true;
+            clearInterval(timer);
         };
     }, [])
 );

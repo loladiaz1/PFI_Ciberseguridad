@@ -7,6 +7,7 @@ import { BrandHeader } from "@/components/ui/BrandHeader";
 import { getIncidents } from "@/services/api";
 import { severityLabel } from "@/utils/severity";
 import type { Incident } from "@/types";
+import { REFRESH_MS } from "@/constants/refresh";
 
 export default function IncidentsList() {
     const [incidents, setIncidents] = useState<Incident[]>([]);
@@ -16,19 +17,27 @@ export default function IncidentsList() {
     useFocusEffect(
         useCallback(() => {
             let cancelled = false;
+            const load = () =>
+                getIncidents()
+                    .then(({ data }) => {
+                        if (cancelled) return;
+                        setIncidents(data);
+                        setError("");
+                    })
+                    .catch(() => {
+                        if (!cancelled) setError("Could not load incidents");
+                    })
+                    .finally(() => {
+                        if (!cancelled) setLoading(false);
+                    });
+
+            // Spinner solo en la primera carga; los refrescos son silenciosos.
             setLoading(true);
-            getIncidents()
-                .then(({ data }) => {
-                    if (!cancelled) setIncidents(data);
-                })
-                .catch(() => {
-                    if (!cancelled) setError("Could not load incidents");
-                })
-                .finally(() => {
-                    if (!cancelled) setLoading(false);
-                });
+            load();
+            const timer = setInterval(load, REFRESH_MS);
             return () => {
                 cancelled = true;
+                clearInterval(timer);
             };
         }, [])
     );
