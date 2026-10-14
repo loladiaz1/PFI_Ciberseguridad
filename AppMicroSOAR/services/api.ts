@@ -2,12 +2,14 @@ import { http } from './http';
 import type {
   ActivityItem,
   Asset,
+  AuditCategory,
   AutomationConfig,
   AutomationMode,
   Criticality,
   Incident,
   PolicyConditions,
   Role,
+  TimelineEntry,
   UserProfile,
   UserStatus,
 } from '../types';
@@ -103,7 +105,15 @@ export const updateAsset = async (agentId: string, criticality: Criticality): Pr
   return data;
 };
 
-export const getAuditEvents = async (): Promise<ActivityItem[]> => {
-  const { data } = await http.get<ActivityItem[]>('/api/v1/audit');
+// Auditoria, opcionalmente filtrada por categoria o por incidente.
+export const getAuditEvents = async (
+  filters: { category?: AuditCategory; incidentId?: number } = {}
+): Promise<ActivityItem[]> => {
+  const { data } = await http.get<ActivityItem[]>('/api/v1/audit', { params: filters });
+  return data;
+};
+
+export const getIncidentTimeline = async (id: number): Promise<TimelineEntry[]> => {
+  const { data } = await http.get<TimelineEntry[]>(`/api/v1/incidents/${id}/timeline`);
   return data;
 };

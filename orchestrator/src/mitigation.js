@@ -33,7 +33,7 @@ async function mitigate(incident, actionName, actor, { auditSuffix = "", extraDa
     data: { ...action.done(), actionLatencyMs: Date.now() - startedAt, ...extraData },
   });
   const [type, detail] = action.audit(updated);
-  await logAudit(type, detail + auditSuffix, actor);
+  await logAudit(type, detail + auditSuffix, actor, updated.id);
   return updated;
 }
 

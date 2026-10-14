@@ -4,11 +4,12 @@ import { useEffect, useState } from "react";
 import Colors from "../styles/colors";
 import BottomNav from "../components/BottomNav";
 import { BrandHeader } from "../components/ui/BrandHeader";
-import { MaterialIcons } from "@expo/vector-icons";
-import { getIncidentById } from "../services/api";
+import { MaterialCommunityIcons, MaterialIcons } from "@expo/vector-icons";
+import { getIncidentById, getIncidentTimeline } from "../services/api";
+import { AUDIT_ICONS } from "../constants/audit";
 import { getStoredUser } from "../services/auth";
 import { incidentRules, severityLabel } from "../utils/severity";
-import type { Incident, MitigationAction } from "../types";
+import type { Incident, MitigationAction, TimelineEntry } from "../types";
 
 // Formas que guarda orchestrator/src/enrichment.js (JSON.stringify).
 type VtStats = { malicious: number; suspicious: number; harmless: number };
@@ -29,12 +30,23 @@ export default function IncidentDetail() {
             .catch(() => setCanAct(false));
     }, []);
 
+    // Linea de tiempo del caso: cada alerta agrupada + eventos vinculados
+    // (automatizacion, acciones). Si falla, el detalle se muestra igual.
+    const [timeline, setTimeline] = useState<TimelineEntry[]>([]);
+    // Apartados desplegables: la evidencia (alertas) abierta, el registro de
+    // auditoria del caso cerrado para no alargar el detalle.
+    const [showAlerts, setShowAlerts] = useState(true);
+    const [showAudit, setShowAudit] = useState(false);
+
     useEffect(() => {
         if (!id) return;
         getIncidentById(Number(id))
             .then(({ data }) => setIncident(data ?? null))
             .catch(() => setError("Could not load incident"))
             .finally(() => setLoading(false));
+        getIncidentTimeline(Number(id))
+            .then(setTimeline)
+            .catch(() => setTimeline([]));
     }, [id]);
 
     if (loading) {
@@ -76,7 +88,10 @@ export default function IncidentDetail() {
 
             <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
 
-                <Text style={styles.title}>
+                {/* El caso se identifica por su numero (el mismo que usa la
+                    auditoria, "incident #N"); un caso agrupado tiene varias reglas. */}
+                <Text style={styles.title}>Incident #{incident.id}</Text>
+                <Text style={styles.rules}>
                     {incidentRules(incident).length > 1 ? "Rules " : "Rule "}
                     {incidentRules(incident).map((r) => `#${r}`).join(", ")}
                 </Text>
@@ -220,6 +235,63 @@ export default function IncidentDetail() {
                     </>
                 )}
 
+                {/* Evidencia del caso: cada alerta, incluidas las agrupadas */}
+                {timeline.some((e) => e.kind === "alert") ? (
+                    <View style={styles.timeline}>
+                        <TouchableOpacity style={styles.sectionHeader} onPress={() => setShowAlerts((v) => !v)}>
+                            <Text style={styles.timelineTitle}>
+                                Alerts ({timeline.filter((e) => e.kind === "alert").length})
+                            </Text>
+                            <MaterialCommunityIcons name={showAlerts ? "chevron-up" : "chevron-down"} size={24} color={Colors.textSecondary} />
+                        </TouchableOpacity>
+                        {showAlerts
+                            ? timeline.map((entry, i) =>
+                                  entry.kind === "alert" ? (
+                                      <View key={`alert-${i}`} style={styles.timelineRow}>
+                                          <MaterialCommunityIcons name="alert-circle" size={18} color={severityLabel(entry.severity).color} />
+                                          <View style={styles.timelineText}>
+                                              <Text style={styles.timelineMain}>
+                                                  Rule #{entry.ruleId}{entry.grouped ? " (grouped)" : ""}
+                                              </Text>
+                                              {entry.detail ? <Text style={styles.timelineSub}>{entry.detail}</Text> : null}
+                                              {entry.hashPositives != null ? (
+                                                  <Text style={styles.timelineSub}>{entry.hashPositives} VirusTotal engines</Text>
+                                              ) : null}
+                                              <Text style={styles.timelineTime}>{new Date(entry.at).toLocaleString()}</Text>
+                                          </View>
+                                      </View>
+                                  ) : null
+                              )
+                            : null}
+                    </View>
+                ) : null}
+
+                {/* Registro de auditoria del caso: deteccion, agrupamiento, automatizacion, acciones */}
+                {timeline.some((e) => e.kind === "event") ? (
+                    <View style={styles.timeline}>
+                        <TouchableOpacity style={styles.sectionHeader} onPress={() => setShowAudit((v) => !v)}>
+                            <Text style={styles.timelineTitle}>
+                                Audit log ({timeline.filter((e) => e.kind === "event").length})
+                            </Text>
+                            <MaterialCommunityIcons name={showAudit ? "chevron-up" : "chevron-down"} size={24} color={Colors.textSecondary} />
+                        </TouchableOpacity>
+                        {showAudit
+                            ? timeline.map((entry, i) =>
+                                  entry.kind === "event" ? (
+                                      <View key={`event-${i}`} style={styles.timelineRow}>
+                                          <MaterialCommunityIcons name={AUDIT_ICONS[entry.type] ?? "bell-outline"} size={18} color={Colors.primary} />
+                                          <View style={styles.timelineText}>
+                                              <Text style={styles.timelineMain}>{entry.detail}</Text>
+                                              {entry.actor ? <Text style={styles.timelineSub}>by {entry.actor}</Text> : null}
+                                              <Text style={styles.timelineTime}>{new Date(entry.at).toLocaleString()}</Text>
+                                          </View>
+                                      </View>
+                                  ) : null
+                              )
+                            : null}
+                    </View>
+                ) : null}
+
             </ScrollView>
 
             <BottomNav />
@@ -259,6 +331,13 @@ const styles = StyleSheet.create({
         color: Colors.text
     },
 
+    rules: {
+        fontSize: 16,
+        fontWeight: "600",
+        color: Colors.primary,
+        marginBottom: 6,
+    },
+
     subtitle: {
         fontSize: 15,
         color: Colors.textSecondary,
@@ -293,6 +372,56 @@ const styles = StyleSheet.create({
         marginLeft: 8,
         fontWeight: "bold",
         fontSize: 22
+    },
+
+    timeline: {
+        backgroundColor: Colors.card,
+        padding: 16,
+        borderRadius: 16,
+        marginTop: 16,
+        borderWidth: 1,
+        borderColor: Colors.border,
+    },
+
+    timelineTitle: {
+        fontWeight: "bold",
+        fontSize: 18,
+        color: Colors.text,
+    },
+
+    sectionHeader: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+    },
+
+    timelineRow: {
+        flexDirection: "row",
+        gap: 10,
+        paddingVertical: 10,
+        borderBottomWidth: 1,
+        borderBottomColor: Colors.border,
+    },
+
+    timelineText: {
+        flex: 1,
+    },
+
+    timelineMain: {
+        color: Colors.text,
+        fontWeight: "600",
+    },
+
+    timelineSub: {
+        color: Colors.textSecondary,
+        fontSize: 13,
+        marginTop: 2,
+    },
+
+    timelineTime: {
+        color: Colors.textSecondary,
+        fontSize: 11,
+        marginTop: 4,
     },
 
     automation: {

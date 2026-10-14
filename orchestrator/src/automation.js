@@ -178,7 +178,8 @@ async function runAutomation(incidentId) {
       await logAudit(
         "automation_simulated",
         `Would ${result.policy.action} on incident #${incident.id} (policy "${result.policy.name}")`,
-        ACTOR
+        ACTOR,
+        incident.id
       );
       return result;
     }
@@ -194,7 +195,7 @@ async function runAutomation(incidentId) {
         where: { id: incident.id },
         data: { automationDecision: "failed", ...record, automationReason: `${result.reason}; Wazuh rejected: ${err.message}` },
       });
-      await logAudit("automation_failed", `Automatic ${result.policy.action} failed on incident #${incident.id}`, ACTOR);
+      await logAudit("automation_failed", `Automatic ${result.policy.action} failed on incident #${incident.id}`, ACTOR, incident.id);
     }
     return result;
   } catch (err) {

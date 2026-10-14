@@ -1,41 +1,32 @@
 import { useCallback, useState } from "react";
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { router } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 
 import { BrandHeader } from "@/components/ui/BrandHeader";
 import { Header } from "@/components/Header";
 import { getAuditEvents } from "@/services/api";
+import { AUDIT_CATEGORIES, AUDIT_ICONS } from "@/constants/audit";
 import Colors from "@/styles/colors";
-import type { ActivityItem } from "@/types";
+import type { ActivityItem, AuditCategory } from "@/types";
 
-const ICONS: Record<string, keyof typeof MaterialCommunityIcons.glyphMap> = {
-  login: "login",
-  incident_detected: "shield-alert",
-  ip_blocked: "shield-lock",
-  host_isolated: "lan-disconnect",
-  account_deleted: "account-remove",
-  alert_grouped: "layers-plus",
-  user_registered: "account-plus",
-  user_updated: "account-edit",
-  user_removed: "account-remove-outline",
-  automation_simulated: "robot-outline",
-  automation_failed: "robot-dead-outline",
-  automation_updated: "tune-variant",
-};
 
 export default function ActivityScreen() {
   const [events, setEvents] = useState<ActivityItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [category, setCategory] = useState<AuditCategory | undefined>(undefined);
 
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
       setLoading(true);
-      getAuditEvents()
+      getAuditEvents({ category })
         .then((data) => {
-          if (!cancelled) setEvents(data);
+          if (cancelled) return;
+          setEvents(data);
+          setError("");
         })
         .catch(() => {
           if (!cancelled) setError("Could not load activity");
@@ -46,13 +37,28 @@ export default function ActivityScreen() {
       return () => {
         cancelled = true;
       };
-    }, [])
+    }, [category])
   );
 
   return (
     <View style={styles.container}>
       <BrandHeader />
       <Header title="Activity" subtitle="Recent system events" />
+
+      {/* Filtro por categoria (las calcula el backend, src/audit.js) */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filters} contentContainerStyle={styles.filtersContent}>
+        {AUDIT_CATEGORIES.map(({ key, label }) => (
+          <TouchableOpacity
+            key={label}
+            style={[styles.chip, category === key && styles.chipActive]}
+            onPress={() => setCategory(key)}
+          >
+            <Text style={[styles.chipText, category === key && styles.chipTextActive]} numberOfLines={1}>
+              {label}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
 
       <ScrollView contentContainerStyle={styles.content}>
         {loading && <ActivityIndicator size="large" style={styles.spinner} />}
@@ -62,18 +68,30 @@ export default function ActivityScreen() {
         )}
 
         {events.map((item) => (
-          <View key={item.id} style={styles.card}>
+          <TouchableOpacity
+            key={item.id}
+            style={styles.card}
+            disabled={!item.incidentId}
+            onPress={() => router.push({ pathname: "/incident", params: { id: String(item.incidentId) } })}
+          >
             <MaterialCommunityIcons
-              name={ICONS[item.type] ?? "bell-outline"}
+              name={AUDIT_ICONS[item.type] ?? "bell-outline"}
               size={20}
               color={Colors.primary}
               style={styles.icon}
             />
             <View style={styles.textBlock}>
               <Text style={styles.title}>{item.detail}</Text>
-              <Text style={styles.time}>{new Date(item.createdAt).toLocaleString()}</Text>
+              <Text style={styles.time}>
+                {new Date(item.createdAt).toLocaleString()}
+                {item.actor ? ` · ${item.actor}` : ""}
+                {item.incidentId ? ` · incident #${item.incidentId}` : ""}
+              </Text>
             </View>
-          </View>
+            {item.incidentId ? (
+              <MaterialCommunityIcons name="chevron-right" size={20} color={Colors.textSecondary} />
+            ) : null}
+          </TouchableOpacity>
         ))}
       </ScrollView>
     </View>
@@ -131,5 +149,47 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     fontSize: 12,
     marginTop: 2,
+  },
+
+  // Un ScrollView horizontal dentro de una columna se encoge y aplasta los
+  // chips: alto fijo y sin compresion.
+  filters: {
+    flexGrow: 0,
+    flexShrink: 0,
+    minHeight: 48,
+    marginBottom: 4,
+  },
+
+  filtersContent: {
+    paddingHorizontal: 20,
+    paddingVertical: 6,
+    alignItems: "center",
+    gap: 8,
+  },
+
+  chip: {
+    flexShrink: 0,
+    minHeight: 34,
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+  },
+
+  chipActive: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+  },
+
+  chipText: {
+    color: Colors.textSecondary,
+    fontSize: 14,
+  },
+
+  chipTextActive: {
+    color: Colors.text,
+    fontWeight: "700",
   },
 });

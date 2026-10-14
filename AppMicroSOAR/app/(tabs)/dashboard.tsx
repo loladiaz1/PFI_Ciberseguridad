@@ -150,6 +150,8 @@ onPress={()=>router.push({ pathname: "/incident", params: { id: String(item.id) 
 
 <View style={styles.info}>
 
+<Text style={styles.incidentId}>#{item.id}</Text>
+
 <Text style={styles.incidentTitle}>
 
 {item.hostname}
@@ -293,6 +295,13 @@ alignItems:"center"
 info:{
 flex:1,
 marginRight:12
+},
+
+incidentId:{
+color:Colors.primary,
+fontWeight:"700",
+fontSize:13,
+marginBottom:2
 },
 
 incidentTitle:{

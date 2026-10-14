@@ -1,7 +1,7 @@
 const express = require("express");
 const rateLimit = require("express-rate-limit");
 const { prisma } = require("./db");
-const { normalizeWazuhAlert, isRelevantAlert } = require("./normalize");
+const { normalizeWazuhAlert, isRelevantAlert, alertDetailOf } = require("./normalize");
 const { enrichIp } = require("./enrichment");
 const {
   ROLES,
@@ -19,7 +19,7 @@ const {
 const { computeMetrics } = require("./metrics");
 const { deleteAccount } = require("./privacy");
 const { findOpenIncident, mergeAlert } = require("./grouping");
-const { logAudit } = require("./audit");
+const { CATEGORIES, categoryOf, logAudit, backfillIncidentIds } = require("./audit");
 const { mitigate } = require("./mitigation");
 const {
   MODES,
@@ -93,6 +93,20 @@ app.post("/api/v1/auth/register", registerLimiter, async (req, res) => {
   res.status(201).json({ username: user.username, status: user.status });
 });
 
+// Una alerta de Wazuh tal como queda en la linea de tiempo del incidente.
+function alertRecord(incidentId, fields, rawAlert) {
+  return {
+    incidentId,
+    ruleId: fields.ruleId,
+    ruleDescription: fields.ruleDescription,
+    severity: fields.severity,
+    timestamp: fields.timestamp,
+    srcIp: fields.srcIp,
+    hashPositives: fields.hashPositives,
+    detail: alertDetailOf(rawAlert),
+  };
+}
+
 app.post("/api/v1/webhook/wazuh", async (req, res) => {
   let fields;
   try {
@@ -118,7 +132,8 @@ app.post("/api/v1/webhook/wazuh", async (req, res) => {
       where: { id: open.id },
       data: mergeAlert(open, fields, now),
     });
-    await logAudit("alert_grouped", `Rule ${fields.ruleId} added to incident #${grouped.id}`);
+    await prisma.incidentAlert.create({ data: alertRecord(grouped.id, fields, req.body) });
+    await logAudit("alert_grouped", `Rule ${fields.ruleId} added to incident #${grouped.id}`, null, grouped.id);
     // Una alerta nueva es informacion nueva (severidad, hash, o el modo /
     // las politicas pudieron cambiar desde la primera): se vuelve a evaluar.
     // Si el incidente ya se mitigo, runAutomation no hace nada.
@@ -130,10 +145,13 @@ app.post("/api/v1/webhook/wazuh", async (req, res) => {
   const incident = await prisma.incident.create({
     data: { ...fields, ingestedAt: now, lastSeenAt: now, ruleIds: JSON.stringify([fields.ruleId]) },
   });
+  await prisma.incidentAlert.create({ data: alertRecord(incident.id, fields, req.body) });
   const ruleLabel = fields.ruleDescription ?? `Rule ${fields.ruleId}`;
   await logAudit(
     "incident_detected",
-    fields.srcIp ? `${ruleLabel} from ${fields.srcIp}` : `${ruleLabel} on ${fields.hostname}`
+    fields.srcIp ? `${ruleLabel} from ${fields.srcIp}` : `${ruleLabel} on ${fields.hostname}`,
+    null,
+    incident.id
   );
 
   // Solo tiene sentido enriquecer si hay una IP atacante -- una alerta de
@@ -394,12 +412,48 @@ app.get("/api/v1/metrics", requireAuth, async (_req, res) => {
   res.json(computeMetrics(incidents));
 });
 
-app.get("/api/v1/audit", requireAuth, async (_req, res) => {
-  const events = await prisma.auditEvent.findMany({
-    orderBy: { id: "desc" },
-    take: 50,
+// Auditoria con filtros: ?category=access|users|incidents|response|automation
+// (ver src/audit.js), ?incidentId=12, ?limit=50 (max 200). Cada evento trae
+// su categoria.
+app.get("/api/v1/audit", requireAuth, async (req, res) => {
+  const { category, incidentId } = req.query;
+  if (category !== undefined && !CATEGORIES[category]) {
+    return res.status(422).json({ detail: `category debe ser una de: ${Object.keys(CATEGORIES).join(", ")}` });
+  }
+  const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200);
+
+  const where = {};
+  if (category) where.type = { in: CATEGORIES[category] };
+  if (incidentId !== undefined) where.incidentId = Number(incidentId);
+
+  const events = await prisma.auditEvent.findMany({ where, orderBy: { id: "desc" }, take: limit });
+  res.json(events.map((e) => ({ ...e, category: categoryOf(e.type) })));
+});
+
+// Linea de tiempo del incidente: cada alerta que lo forma (la primera y las
+// agrupadas) y cada evento de auditoria vinculado (automatizacion, acciones),
+// en orden cronologico. Los incidentes anteriores al registro de alertas
+// muestran solo la alerta original, reconstruida desde el incidente.
+app.get("/api/v1/incidents/:id/timeline", requireAuth, async (req, res) => {
+  const incident = await prisma.incident.findUnique({
+    where: { id: Number(req.params.id) },
+    include: { alerts: { orderBy: { id: "asc" } } },
   });
-  res.json(events);
+  if (!incident) return res.status(404).json({ detail: "Incident not found" });
+
+  const alerts = incident.alerts.length
+    ? incident.alerts
+    : [{ id: null, ruleId: incident.ruleId, ruleDescription: incident.ruleDescription, severity: incident.severity, timestamp: incident.timestamp, srcIp: incident.srcIp, detail: null, hashPositives: incident.hashPositives }];
+  const events = await prisma.auditEvent.findMany({ where: { incidentId: incident.id }, orderBy: { id: "asc" } });
+
+  const timeline = [
+    ...alerts.map((a, i) => ({ kind: "alert", at: new Date(a.timestamp).toISOString(), grouped: i > 0, ...a })),
+    ...events.map((e) => ({ kind: "event", at: e.createdAt.toISOString(), category: categoryOf(e.type), ...e })),
+  // Empate de hora: la alerta antes que lo que provoco; entre dos del mismo
+  // tipo, el orden de llegada (sort estable).
+  ].sort((a, b) => new Date(a.at) - new Date(b.at) || (a.kind === b.kind ? 0 : a.kind === "alert" ? -1 : 1));
+
+  res.json(timeline);
 });
 
 if (require.main === module) {
@@ -408,6 +462,7 @@ if (require.main === module) {
   // (tambien se intenta en cada login, por si la base se recreo en caliente).
   ensureBootstrapAdmin().catch((err) => console.error("No se pudo crear el admin inicial:", err.message));
   ensureAutomationDefaults().catch((err) => console.error("No se pudo cargar la automatizacion:", err.message));
+  backfillIncidentIds().catch((err) => console.error("No se pudo vincular la auditoria a los incidentes:", err.message));
   app.listen(port, () => console.log(`Micro-SOAR Orchestrator escuchando en :${port}`));
 }
 
