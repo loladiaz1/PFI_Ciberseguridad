@@ -186,6 +186,30 @@ Si algo se atrasa, se recorta en este orden:
 - [ ] Revisar el anexo antes del 20/10 (tono de los nombres de tests, carátula, numeración)
 - Fuera de alcance por decisión del equipo: tests automatizados de la app móvil (se valida E2E en el celular)
 
+### E75 — correcciones de la devolución E50 (entrega 20/10/2026) — 🟡 En progreso
+Detalle completo en `CORRECCIONES para 75%.md`; registro en `progress.md` (sesión 14/10).
+
+**Requisitos explícitos de E75**
+- [ ] Resolución completa de las observaciones de E50 (ver abajo)
+- [x] Evidencia de testing con cobertura ≥ 85% (`docs/anexo-pruebas/anexo-pruebas.pdf`, 13/10)
+- [x] Marco legal y de privacidad: anonimización de datos y Ley 25.326 (14/10; base para la tesis en `docs/privacidad-ley-25326.md`)
+- [ ] Capítulo de Conclusiones y Trabajo Futuro fundamentado con métricas
+
+**Correcciones técnicas del producto**
+- [x] Instrumentar tiempos de respuesta por incidente + `GET /api/v1/metrics` (14/10, PR #7)
+- [x] App con refresco automático cada 10 s (14/10, PR #8)
+- [ ] **Campaña de medición** (10× CU-01 + 10× CU-02 contra la infra real; protocolo en `progress.md`, sesión 14/10)
+- [ ] Cotas numéricas para RNF-05 y para el "SLA" de RNF-07 / CU-01 / CU-02, a partir de la campaña — **crítica**
+- [x] Eliminar cuenta (`DELETE /api/v1/me` + botón en Perfil, auditoría seudonimizada) — **crítica** (14/10)
+- [x] Ley 25.326: retención con enmascarado de IPs a 90 días, aviso de privacidad en la app, consentimiento en el registro — **crítica** (14/10)
+- [ ] Completar el responsable y contacto en `AppMicroSOAR/app/privacy.tsx` (placeholder) y programar la retención en la instancia
+- [ ] Modelo de datos y contrato de API del documento = sistema real (no "versión objetivo")
+- [ ] Diagramas vectoriales (arquitectura, flujos, secuencia, entidad-relación) — **crítica**
+- [ ] Los 11 RNF redactados como "El sistema debe..." (junto con las cotas)
+
+**Correcciones del documento** (formato, citas, estructura: títulos, carátulas, bibliografía, numeración, etc.)
+- [ ] Pendientes. Migración del documento de Google Docs a LaTeX: pausada por ahora (varias correcciones de formato se resuelven solas con LaTeX)
+
 ## 9. Diseño para escalar (cuesta casi lo mismo ahora)
 - Orquestador normaliza a `Incident` canónico (no propaga la alerta cruda).
 - Acción de bloqueo detrás de una interfaz `Action` (patrón responders).
