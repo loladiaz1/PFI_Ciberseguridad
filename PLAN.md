@@ -203,7 +203,13 @@ Detalle completo en `CORRECCIONES para 75%.md`; registro en `progress.md` (sesi�
 - [ ] Incorporar las cotas al documento (RNF-05, RNF-07, precondiciones de CU-01/CU-02)
 - [x] Eliminar cuenta (`DELETE /api/v1/me` + botón en Perfil, auditoría seudonimizada) — **crítica** (14/10)
 - [x] Ley 25.326: retención con enmascarado de IPs a 90 días, aviso de privacidad en la app, consentimiento en el registro — **crítica** (14/10)
-- [ ] Completar el responsable y contacto en `AppMicroSOAR/app/privacy.tsx` (placeholder) y programar la retención en la instancia
+- [x] Responsable en el aviso de privacidad (14/10) — [ ] falta un email de contacto
+- [ ] Programar la retención en la instancia (hoy manual)
+- [x] Agrupamiento de incidentes del mismo ataque (14/10, PR #11)
+- [x] Usuarios reales con roles admin / analyst / auditor y registro con aprobación (RF-13) (14/10, PR #11)
+- [ ] **Automatización según contexto** (políticas configurables por el admin, simulación, exclusiones, interruptor general)
+- [ ] Línea de tiempo de auditoría por incidente
+- [ ] Regenerar el anexo de pruebas antes del 20/10 (93 tests al 14/10)
 - [ ] Modelo de datos y contrato de API del documento = sistema real (no "versión objetivo")
 - [ ] Diagramas vectoriales (arquitectura, flujos, secuencia, entidad-relación) — **crítica**
 - [ ] Los 11 RNF redactados como "El sistema debe..." (junto con las cotas)

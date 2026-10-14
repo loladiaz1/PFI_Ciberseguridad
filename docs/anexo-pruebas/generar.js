@@ -36,6 +36,10 @@ const SUITES = {
   "auth.test.js": ["Autenticación (JWT)", "Seguridad", "Acceso a incidentes o acciones sin credenciales válidas."],
   "me.test.js": ["Perfil del analista", "Soporte", "Datos de perfil inválidos o accesibles sin autenticación."],
   "audit.test.js": ["Auditoría", "Seguridad", "Acciones del analista sin registro trazable."],
+  "users.test.js": ["Usuarios y control de acceso por roles", "Seguridad (RF-13)", "Acceso sin aprobación, un rol que excede sus permisos, sesiones que siguen vivas después de desactivar una cuenta, o el sistema sin ningún administrador."],
+  "grouping.test.js": ["Agrupamiento de alertas", "CU-01 / CU-02", "Un mismo ataque genera varios incidentes (5712 + 5551): el analista mitiga uno y el otro queda abierto."],
+  "metrics.test.js": ["Métricas de tiempo de respuesta", "RNF-05", "Cotas de rendimiento calculadas sobre datos inválidos o mezclando incidentes anteriores a la instrumentación."],
+  "privacy.test.js": ["Protección de datos personales", "Ley 25.326", "Datos personales conservados más de lo necesario, o una baja que borra la trazabilidad de seguridad o no quita el acceso."],
 };
 
 const suites = results.testResults
