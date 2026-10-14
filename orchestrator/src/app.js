@@ -6,6 +6,7 @@ const { authenticate, blockIp, isolateHost } = require("./wazuh");
 const { enrichIp } = require("./enrichment");
 const { login, requireAuth } = require("./auth");
 const { computeMetrics } = require("./metrics");
+const { deleteAccount } = require("./privacy");
 
 const app = express();
 app.use(express.json());
@@ -23,8 +24,10 @@ const loginLimiter = rateLimit({
   message: { detail: "Too many login attempts, try again later" },
 });
 
-function logAudit(type, detail) {
-  return prisma.auditEvent.create({ data: { type, detail } }).catch((err) => {
+// actor va separado del texto (no "<username> hizo X") para poder
+// seudonimizarlo al eliminar la cuenta (ver src/privacy.js).
+function logAudit(type, detail, actor = null) {
+  return prisma.auditEvent.create({ data: { type, detail, actor } }).catch((err) => {
     console.error("No se pudo registrar el evento de auditoria:", err.message);
   });
 }
@@ -37,7 +40,7 @@ app.post("/api/v1/auth/login", loginLimiter, async (req, res) => {
     return res.status(401).json({ detail: "Invalid credentials" });
   }
 
-  await logAudit("login", `${username} logged in`);
+  await logAudit("login", "Logged in", username);
   res.status(200).json({ token });
 });
 
@@ -114,6 +117,15 @@ app.put("/api/v1/me", requireAuth, async (req, res) => {
   res.json(user);
 });
 
+// Derecho de supresion (Ley 25.326, art. 16): borra el perfil y seudonimiza
+// el rastro de auditoria. Las credenciales del MVP son de configuracion (un
+// solo usuario por env vars), no se guardan en la base: si la persona vuelve
+// a iniciar sesion, GET /me crea un perfil nuevo y vacio.
+app.delete("/api/v1/me", requireAuth, async (req, res) => {
+  await deleteAccount(prisma, req.user.sub);
+  res.status(204).end();
+});
+
 app.get("/api/v1/incidents", requireAuth, async (_req, res) => {
   const incidents = await prisma.incident.findMany({ orderBy: { id: "desc" } });
   res.json(incidents);
@@ -155,7 +167,7 @@ app.post("/api/v1/incidents/:id/actions/block-ip", requireAuth, async (req, res)
     data: { status: "blocked", blockedAt: new Date(), actionLatencyMs: Date.now() - startedAt },
   });
 
-  await logAudit("ip_blocked", `Blocked ${updated.srcIp} (incident #${updated.id})`);
+  await logAudit("ip_blocked", `Blocked ${updated.srcIp} (incident #${updated.id})`, req.user.sub);
 
   res.status(200).json({
     incidentId: updated.id,
@@ -188,7 +200,7 @@ app.post("/api/v1/incidents/:id/actions/isolate-host", requireAuth, async (req, 
     data: { status: "isolated", isolatedAt: new Date(), actionLatencyMs: Date.now() - startedAt },
   });
 
-  await logAudit("host_isolated", `Isolated ${updated.hostname} (incident #${updated.id})`);
+  await logAudit("host_isolated", `Isolated ${updated.hostname} (incident #${updated.id})`, req.user.sub);
 
   res.status(200).json({
     incidentId: updated.id,
