@@ -6,10 +6,13 @@ const request = require("supertest");
 const mockAlert = require("../mocks/wazuh_ssh_bruteforce.json");
 const { app } = require("../src/app");
 const { prisma } = require("../src/db");
-const { login } = require("../src/auth");
+const { adminToken } = require("./helpers");
 const { enrichIp } = require("../src/enrichment");
 
-const token = login(process.env.AUTH_USER, process.env.AUTH_PASSWORD);
+let token;
+beforeAll(async () => {
+  token = await adminToken();
+});
 // El enriquecimiento corre despues de responder a Wazuh (no lo bloquea):
 // hay que darle un tick para que termine antes de mirar la base.
 const flush = () => new Promise((resolve) => setTimeout(resolve, 100));

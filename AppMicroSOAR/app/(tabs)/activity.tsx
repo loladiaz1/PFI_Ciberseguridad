@@ -15,6 +15,10 @@ const ICONS: Record<string, keyof typeof MaterialCommunityIcons.glyphMap> = {
   ip_blocked: "shield-lock",
   host_isolated: "lan-disconnect",
   account_deleted: "account-remove",
+  alert_grouped: "layers-plus",
+  user_registered: "account-plus",
+  user_updated: "account-edit",
+  user_removed: "account-remove-outline",
 };
 
 export default function ActivityScreen() {

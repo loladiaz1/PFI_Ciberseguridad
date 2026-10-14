@@ -4,9 +4,22 @@ const { prisma } = require("./db");
 const { normalizeWazuhAlert, isRelevantAlert } = require("./normalize");
 const { authenticate, blockIp, isolateHost } = require("./wazuh");
 const { enrichIp } = require("./enrichment");
-const { login, requireAuth } = require("./auth");
+const {
+  ROLES,
+  STATUSES,
+  validatePassword,
+  hashPassword,
+  publicUser,
+  authenticateUser,
+  issueToken,
+  requireAuth,
+  requireRole,
+  isLastActiveAdmin,
+  ensureBootstrapAdmin,
+} = require("./auth");
 const { computeMetrics } = require("./metrics");
 const { deleteAccount } = require("./privacy");
+const { findOpenIncident, mergeAlert } = require("./grouping");
 
 const app = express();
 app.use(express.json());
@@ -34,14 +47,50 @@ function logAudit(type, detail, actor = null) {
 
 app.post("/api/v1/auth/login", loginLimiter, async (req, res) => {
   const { username, password } = req.body || {};
-  const token = login(username, password);
+  const { user, error } = await authenticateUser(username, password);
 
-  if (!token) {
+  if (error === "pending") {
+    return res.status(403).json({ detail: "Account pending approval by an administrator" });
+  }
+  if (error === "disabled") {
+    return res.status(403).json({ detail: "Account disabled" });
+  }
+  if (error) {
     return res.status(401).json({ detail: "Invalid credentials" });
   }
 
-  await logAudit("login", "Logged in", username);
-  res.status(200).json({ token });
+  await logAudit("login", "Logged in", user.username);
+  res.status(200).json({ token: issueToken(user) });
+});
+
+// Registro con aprobacion: la cuenta nace "pending" y con el rol de menor
+// privilegio que puede operar (analyst); un admin la activa o la rechaza.
+// Nadie se da acceso a si mismo.
+const registerLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { detail: "Too many registration attempts, try again later" },
+});
+
+app.post("/api/v1/auth/register", registerLimiter, async (req, res) => {
+  const { username, name, email, password } = req.body || {};
+  if (!username || !name || !email || !password) {
+    return res.status(422).json({ detail: "username, name, email y password son obligatorios" });
+  }
+  if (!validatePassword(password)) {
+    return res.status(422).json({ detail: "Password too weak" });
+  }
+  if (await prisma.user.findUnique({ where: { username } })) {
+    return res.status(409).json({ detail: "Username already registered" });
+  }
+
+  const user = await prisma.user.create({
+    data: { username, name, email, role: "analyst", status: "pending", passwordHash: await hashPassword(password) },
+  });
+  await logAudit("user_registered", "Registered, pending approval", username);
+  res.status(201).json({ username: user.username, status: user.status });
 });
 
 app.post("/api/v1/webhook/wazuh", async (req, res) => {
@@ -58,7 +107,24 @@ app.post("/api/v1/webhook/wazuh", async (req, res) => {
     return res.status(202).json({ ignored: true, ruleId: fields.ruleId });
   }
 
-  const incident = await prisma.incident.create({ data: { ...fields, ingestedAt: new Date() } });
+  const now = new Date();
+
+  // Misma IP + mismo agente + incidente abierto reciente -> es el mismo
+  // ataque: se suma la alerta en vez de abrir otro incidente (src/grouping.js).
+  // 200 (no 201): no se creo nada nuevo. Sin enriquecer de nuevo: misma IP.
+  const open = await findOpenIncident(prisma, fields, now);
+  if (open) {
+    const grouped = await prisma.incident.update({
+      where: { id: open.id },
+      data: mergeAlert(open, fields, now),
+    });
+    await logAudit("alert_grouped", `Rule ${fields.ruleId} added to incident #${grouped.id}`);
+    return res.status(200).json({ ...grouped, grouped: true });
+  }
+
+  const incident = await prisma.incident.create({
+    data: { ...fields, ingestedAt: now, lastSeenAt: now, ruleIds: JSON.stringify([fields.ruleId]) },
+  });
   const ruleLabel = fields.ruleDescription ?? `Rule ${fields.ruleId}`;
   await logAudit(
     "incident_detected",
@@ -86,20 +152,8 @@ app.post("/api/v1/webhook/wazuh", async (req, res) => {
 });
 
 app.get("/api/v1/me", requireAuth, async (req, res) => {
-  // upsert en vez de un seed aparte al bootear: no hay endpoint de registro
-  // real, asi que la primera vez que este usuario pide su perfil es cuando
-  // se crea la fila -- sin condicion de carrera con el arranque del server.
-  const user = await prisma.user.upsert({
-    where: { username: req.user.sub },
-    update: {},
-    create: {
-      username: req.user.sub,
-      name: "SOC Analyst",
-      email: `${req.user.sub}@microsoar.dev`,
-      role: req.user.role,
-    },
-  });
-  res.json(user);
+  const user = await prisma.user.findUnique({ where: { username: req.user.sub } });
+  res.json(publicUser(user));
 });
 
 app.put("/api/v1/me", requireAuth, async (req, res) => {
@@ -108,21 +162,74 @@ app.put("/api/v1/me", requireAuth, async (req, res) => {
     return res.status(422).json({ detail: "name and email son obligatorios" });
   }
 
-  const user = await prisma.user.upsert({
-    where: { username: req.user.sub },
-    update: { name, email },
-    create: { username: req.user.sub, name, email, role: req.user.role },
-  });
-
-  res.json(user);
+  const user = await prisma.user.update({ where: { username: req.user.sub }, data: { name, email } });
+  res.json(publicUser(user));
 });
 
-// Derecho de supresion (Ley 25.326, art. 16): borra el perfil y seudonimiza
-// el rastro de auditoria. Las credenciales del MVP son de configuracion (un
-// solo usuario por env vars), no se guardan en la base: si la persona vuelve
-// a iniciar sesion, GET /me crea un perfil nuevo y vacio.
+const LAST_ADMIN = { detail: "Cannot remove the last active administrator" };
+
+// Derecho de supresion (Ley 25.326, art. 16): borra el usuario (y con el su
+// acceso) y seudonimiza el rastro de auditoria.
 app.delete("/api/v1/me", requireAuth, async (req, res) => {
+  if (await isLastActiveAdmin(req.user.sub)) return res.status(409).json(LAST_ADMIN);
   await deleteAccount(prisma, req.user.sub);
+  res.status(204).end();
+});
+
+// ---------------------------------------------------------------------------
+// Gestion de usuarios (solo admin). Toda accion queda auditada con el admin
+// como actor.
+// ---------------------------------------------------------------------------
+
+app.get("/api/v1/users", requireAuth, requireRole("admin"), async (_req, res) => {
+  const users = await prisma.user.findMany({ orderBy: { createdAt: "asc" } });
+  // Pendientes primero: es lo que el admin tiene que resolver.
+  const order = { pending: 0, active: 1, disabled: 2 };
+  res.json(users.map(publicUser).sort((a, b) => (order[a.status] ?? 3) - (order[b.status] ?? 3)));
+});
+
+// Aprobar / desactivar (status) y cambiar el rol.
+app.patch("/api/v1/users/:username", requireAuth, requireRole("admin"), async (req, res) => {
+  const { username } = req.params;
+  const { role, status } = req.body || {};
+  if (role !== undefined && !ROLES.includes(role)) {
+    return res.status(422).json({ detail: `role debe ser uno de: ${ROLES.join(", ")}` });
+  }
+  if (status !== undefined && (!STATUSES.includes(status) || status === "pending")) {
+    return res.status(422).json({ detail: "status debe ser active o disabled" });
+  }
+
+  const target = await prisma.user.findUnique({ where: { username } });
+  if (!target) return res.status(404).json({ detail: "User not found" });
+
+  const losesAdmin = (role !== undefined && role !== "admin") || status === "disabled";
+  if (losesAdmin && (await isLastActiveAdmin(username))) return res.status(409).json(LAST_ADMIN);
+
+  const data = {};
+  if (role !== undefined) data.role = role;
+  if (status !== undefined) data.status = status;
+  const updated = await prisma.user.update({ where: { username }, data });
+
+  const changes = [];
+  if (status === "active" && target.status === "pending") changes.push("approved");
+  else if (status !== undefined && status !== target.status) changes.push(`status ${target.status} -> ${status}`);
+  if (role !== undefined && role !== target.role) changes.push(`role ${target.role} -> ${role}`);
+  await logAudit("user_updated", `User ${username}: ${changes.join(", ") || "no changes"}`, req.user.sub);
+
+  res.json(publicUser(updated));
+});
+
+// Rechazar un registro o dar de baja a un usuario: misma supresion que
+// DELETE /me (borra el usuario, seudonimiza su auditoria).
+app.delete("/api/v1/users/:username", requireAuth, requireRole("admin"), async (req, res) => {
+  const { username } = req.params;
+  if (!(await prisma.user.findUnique({ where: { username } }))) {
+    return res.status(404).json({ detail: "User not found" });
+  }
+  if (await isLastActiveAdmin(username)) return res.status(409).json(LAST_ADMIN);
+
+  const pseudonym = await deleteAccount(prisma, username);
+  await logAudit("user_removed", `Removed user (${pseudonym})`, req.user.sub);
   res.status(204).end();
 });
 
@@ -139,7 +246,8 @@ app.get("/api/v1/incidents/:id", requireAuth, async (req, res) => {
   res.json(incident);
 });
 
-app.post("/api/v1/incidents/:id/actions/block-ip", requireAuth, async (req, res) => {
+// Acciones de contencion: admin y analyst. El auditor es solo lectura.
+app.post("/api/v1/incidents/:id/actions/block-ip", requireAuth, requireRole("admin", "analyst"), async (req, res) => {
   const incident = await prisma.incident.findUnique({ where: { id: Number(req.params.id) } });
   if (!incident) {
     return res.status(404).json({ detail: "Incident not found" });
@@ -177,7 +285,7 @@ app.post("/api/v1/incidents/:id/actions/block-ip", requireAuth, async (req, res)
   });
 });
 
-app.post("/api/v1/incidents/:id/actions/isolate-host", requireAuth, async (req, res) => {
+app.post("/api/v1/incidents/:id/actions/isolate-host", requireAuth, requireRole("admin", "analyst"), async (req, res) => {
   const incident = await prisma.incident.findUnique({ where: { id: Number(req.params.id) } });
   if (!incident) {
     return res.status(404).json({ detail: "Incident not found" });
@@ -234,6 +342,9 @@ app.get("/api/v1/audit", requireAuth, async (_req, res) => {
 
 if (require.main === module) {
   const port = process.env.PORT || 8000;
+  // Admin inicial desde AUTH_USER / AUTH_PASSWORD si todavia no hay ninguno
+  // (tambien se intenta en cada login, por si la base se recreo en caliente).
+  ensureBootstrapAdmin().catch((err) => console.error("No se pudo crear el admin inicial:", err.message));
   app.listen(port, () => console.log(`Micro-SOAR Orchestrator escuchando en :${port}`));
 }
 

@@ -1,9 +1,12 @@
 const request = require("supertest");
 const { app } = require("../src/app");
 const { prisma } = require("../src/db");
-const { login } = require("../src/auth");
+const { adminToken } = require("./helpers");
 
-const token = login(process.env.AUTH_USER, process.env.AUTH_PASSWORD);
+let token;
+beforeAll(async () => {
+  token = await adminToken();
+});
 
 afterAll(async () => {
   await prisma.$disconnect();
@@ -19,7 +22,8 @@ test("GET /me crea y devuelve el perfil del usuario autenticado", async () => {
 
   expect(resp.status).toBe(200);
   expect(resp.body.username).toBe(process.env.AUTH_USER);
-  expect(resp.body.role).toBe("soc-analyst");
+  expect(resp.body.role).toBe("admin"); // admin inicial (AUTH_USER)
+  expect(resp.body.passwordHash).toBeUndefined(); // el hash nunca sale por la API
 });
 
 test("PUT /me actualiza nombre y email", async () => {

@@ -9,3 +9,8 @@ delete process.env.ABUSEIPDB_API_KEY;
 // process.env.WAZUH_HOST -- en CI no hay .env y llegaba undefined. Valor
 // fijo y no resoluble (.invalid): nunca se le pega de verdad.
 process.env.WAZUH_HOST = "https://wazuh.invalid:55000";
+
+// Agrupamiento desactivado por defecto en los tests: la mayoria postea la
+// misma alerta varias veces y necesita un incidente nuevo cada vez.
+// tests/grouping.test.js lo activa explicitamente.
+process.env.GROUP_WINDOW_MS = "0";

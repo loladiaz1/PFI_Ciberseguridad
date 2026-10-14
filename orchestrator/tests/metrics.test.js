@@ -6,12 +6,14 @@ const bruteforceAlert = require("../mocks/wazuh_ssh_bruteforce.json");
 const malwareAlert = require("../mocks/wazuh_malware_detected.json");
 const { app } = require("../src/app");
 const { prisma } = require("../src/db");
-const { login } = require("../src/auth");
+const { adminToken } = require("./helpers");
 const { authenticate, blockIp, isolateHost } = require("../src/wazuh");
 const { computeMetrics, percentile, summarize } = require("../src/metrics");
 
-const token = login(process.env.AUTH_USER, process.env.AUTH_PASSWORD);
-const auth = { Authorization: `Bearer ${token}` };
+let auth;
+beforeAll(async () => {
+  auth = { Authorization: `Bearer ${await adminToken()}` };
+});
 
 afterAll(async () => {
   await prisma.$disconnect();

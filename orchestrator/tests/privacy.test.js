@@ -6,13 +6,17 @@ const request = require("supertest");
 const bruteforceAlert = require("../mocks/wazuh_ssh_bruteforce.json");
 const { app } = require("../src/app");
 const { prisma } = require("../src/db");
-const { login } = require("../src/auth");
+const { adminToken, tokenFor, STRONG_PASSWORD } = require("./helpers");
 const { authenticate, blockIp } = require("../src/wazuh");
 const { pseudonymize, maskIp, maskIpsInText, applyRetention } = require("../src/privacy");
 
-const USER = process.env.AUTH_USER;
-const token = login(USER, process.env.AUTH_PASSWORD);
-const auth = { Authorization: `Bearer ${token}` };
+// Analista propio de este archivo: el admin inicial no se puede eliminar
+// (es el ultimo admin, ver tests/users.test.js).
+const USER = "ana.privacy@test.dev";
+let auth;
+beforeEach(async () => {
+  auth = { Authorization: `Bearer ${await tokenFor({ username: USER, role: "analyst" })}` };
+});
 
 afterAll(async () => {
   await prisma.$disconnect();
@@ -54,7 +58,7 @@ describe("DELETE /api/v1/me (derecho de supresion)", () => {
     // Rastro real del usuario: perfil, login, una accion critica y un
     // evento con el formato anterior al campo actor.
     await request(app).put("/api/v1/me").set(auth).send({ name: "Ana Analista", email: "ana@example.com" });
-    await request(app).post("/api/v1/auth/login").send({ username: USER, password: process.env.AUTH_PASSWORD });
+    await request(app).post("/api/v1/auth/login").send({ username: USER, password: STRONG_PASSWORD });
     const created = await request(app).post("/api/v1/webhook/wazuh").send(bruteforceAlert);
     await request(app).post(`/api/v1/incidents/${created.body.id}/actions/block-ip`).set(auth);
     const legacy = await prisma.auditEvent.create({ data: { type: "login", detail: `${USER} logged in` } });
@@ -73,13 +77,22 @@ describe("DELETE /api/v1/me (derecho de supresion)", () => {
     expect(await prisma.auditEvent.count({ where: { type: "account_deleted", actor: pseudonym } })).toBeGreaterThanOrEqual(1);
   });
 
-  test("despues de eliminar la cuenta, un nuevo login arranca con un perfil vacio", async () => {
+  test("despues de eliminar la cuenta, el acceso se pierde en el acto", async () => {
     await request(app).delete("/api/v1/me").set(auth);
 
-    const resp = await request(app).get("/api/v1/me").set(auth);
+    // El token sigue siendo criptograficamente valido, pero el usuario ya no existe.
+    expect((await request(app).get("/api/v1/me").set(auth)).status).toBe(401);
+    const login = await request(app).post("/api/v1/auth/login").send({ username: USER, password: STRONG_PASSWORD });
+    expect(login.status).toBe(401);
+  });
 
-    expect(resp.status).toBe(200);
-    expect(resp.body.name).toBe("SOC Analyst"); // valor por defecto, no el dato borrado
+  test("el ultimo administrador no puede eliminar su propia cuenta", async () => {
+    const resp = await request(app)
+      .delete("/api/v1/me")
+      .set("Authorization", `Bearer ${await adminToken()}`);
+
+    expect(resp.status).toBe(409);
+    expect(await prisma.user.findUnique({ where: { username: process.env.AUTH_USER } })).not.toBeNull();
   });
 });
 

@@ -25,6 +25,12 @@ model Incident {
   // null y no contaminan las metricas con la fecha de la migracion.
   ingestedAt      DateTime?
   actionLatencyMs Int?
+  // Agrupamiento (src/grouping.js): alertas del mismo ataque se suman a un
+  // incidente abierto en vez de crear uno nuevo. ruleIds = JSON con todas
+  // las reglas que dispararon; null en incidentes previos (= solo ruleId).
+  alertCount      Int       @default(1)
+  ruleIds         String?
+  lastSeenAt      DateTime?
   enrichmentVt        String?
   enrichmentAbuseIpdb String?
 
@@ -32,11 +38,18 @@ model Incident {
 }
 
 model User {
-  id       Int    @id @default(autoincrement())
-  username String @unique
-  name     String
-  email    String
-  role     String @default("soc-analyst")
+  id           Int      @id @default(autoincrement())
+  username     String   @unique
+  name         String
+  email        String
+  // Roles (src/auth.js): admin | analyst | auditor. "soc-analyst" es el
+  // valor anterior al RBAC y se normaliza a "analyst" al arrancar.
+  role         String   @default("analyst")
+  // pending (registrado, espera aprobacion de un admin) | active | disabled
+  status       String   @default("pending")
+  // bcrypt; null solo en filas anteriores a los usuarios reales.
+  passwordHash String?
+  createdAt    DateTime @default(now())
 
   @@map("users")
 }

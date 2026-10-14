@@ -75,7 +75,10 @@ export default function IncidentsList() {
                                 <Text style={[styles.badge, { backgroundColor: severity.color }]}>
                                     {severity.label}
                                 </Text>
-                                <Text style={styles.status}>{incident.status}</Text>
+                                <Text style={styles.status}>
+                                    {incident.alertCount > 1 ? `${incident.alertCount} alerts · ` : ""}
+                                    {incident.status}
+                                </Text>
                             </View>
                         </TouchableOpacity>
                     );

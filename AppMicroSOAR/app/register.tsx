@@ -11,6 +11,7 @@ import {
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
+import { isAxiosError } from "axios";
 import { signUp } from "../services/auth";
 import Colors from "../styles/colors";
 
@@ -125,28 +126,21 @@ export default function RegisterScreen() {
     try {
       setLoading(true);
 
-      const result = await signUp(
+      await signUp(
         name.trim(),
         email.trim().toLowerCase(),
         password
       );
 
-      console.log(
-        "Usuario registrado:",
-        result.user
-      );
-
       // --------------------------------------
       // REGISTRO CORRECTO
       // --------------------------------------
-      // El registro es mock (no hay endpoint real todavia), asi que no
-      // guarda una sesion valida -- mandar a /dashboard aca terminaba
-      // rebotando solo al login en cuanto cualquier pantalla pedia datos
-      // autenticados. Mandamos al login de una, con el mensaje correcto.
+      // La cuenta queda pendiente: no se puede entrar hasta que un admin
+      // la apruebe (registro con aprobacion, RBAC).
 
       Alert.alert(
-        "Account created",
-        "Please log in with your new account."
+        "Registration sent",
+        "An administrator must approve your account before you can log in. Use your email as username."
       );
 
       router.replace("/");
@@ -165,7 +159,15 @@ export default function RegisterScreen() {
       let message =
         "Unable to create the account.";
 
-      if (error instanceof Error) {
+      if (isAxiosError(error) && error.response?.status === 409) {
+        message = "This email is already registered.";
+      } else if (isAxiosError(error) && error.response?.status === 429) {
+        message = "Too many attempts. Please wait a few minutes and try again.";
+      } else if (isAxiosError(error) && error.response) {
+        message = error.response.data?.detail ?? message;
+      } else if (isAxiosError(error)) {
+        message = "Unable to connect to the server.";
+      } else if (error instanceof Error) {
         message = error.message;
       }
 
