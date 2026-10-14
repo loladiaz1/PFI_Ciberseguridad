@@ -193,13 +193,14 @@ Detalle completo en `CORRECCIONES para 75%.md`; registro en `progress.md` (sesi�
 - [ ] Resolución completa de las observaciones de E50 (ver abajo)
 - [x] Evidencia de testing con cobertura ≥ 85% (`docs/anexo-pruebas/anexo-pruebas.pdf`, 13/10)
 - [x] Marco legal y de privacidad: anonimización de datos y Ley 25.326 (14/10; base para la tesis en `docs/privacidad-ley-25326.md`)
-- [ ] Capítulo de Conclusiones y Trabajo Futuro fundamentado con métricas
+- [ ] Capítulo de Conclusiones y Trabajo Futuro fundamentado con métricas (datos listos: contención p50 21,1 s / p95 31,3 s vs 8-14 min, ver `docs/metricas-campana-2026-10-14.md`)
 
 **Correcciones técnicas del producto**
 - [x] Instrumentar tiempos de respuesta por incidente + `GET /api/v1/metrics` (14/10, PR #7)
 - [x] App con refresco automático cada 10 s (14/10, PR #8)
-- [ ] **Campaña de medición** (10× CU-01 + 10× CU-02 contra la infra real; protocolo en `progress.md`, sesión 14/10)
-- [ ] Cotas numéricas para RNF-05 y para el "SLA" de RNF-07 / CU-01 / CU-02, a partir de la campaña — **crítica**
+- [x] **Campaña de medición** (14/10): 6 corridas completas por caso de uso + 24 detecciones. Resultados en `docs/metricas-campana-2026-10-14.md`
+- [x] Cotas numéricas propuestas a partir de la campaña — **crítica**: detección ≤ 5 s, visible en la app ≤ 15 s, ejecución de la acción ≤ 2 s, contención (SLA) ≤ 60 s, todas p95 (14/10)
+- [ ] Incorporar las cotas al documento (RNF-05, RNF-07, precondiciones de CU-01/CU-02)
 - [x] Eliminar cuenta (`DELETE /api/v1/me` + botón en Perfil, auditoría seudonimizada) — **crítica** (14/10)
 - [x] Ley 25.326: retención con enmascarado de IPs a 90 días, aviso de privacidad en la app, consentimiento en el registro — **crítica** (14/10)
 - [ ] Completar el responsable y contacto en `AppMicroSOAR/app/privacy.tsx` (placeholder) y programar la retención en la instancia

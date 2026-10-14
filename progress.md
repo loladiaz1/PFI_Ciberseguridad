@@ -115,7 +115,7 @@ _(La más reciente arriba. Formato fijo por entrada.)_
   - **Métricas de tiempo de respuesta** (PR #7, deployado y verificado en la instancia): campos `ingestedAt` y `actionLatencyMs` en `Incident` (sin default: los 15 incidentes previos quedan en null y no contaminan la medición); `src/metrics.js` calcula por caso de uso p50/p95/máx de **detección → ingesta**, **ejecución de la acción** (login + llamada a Wazuh) y **contención** (alerta → mitigado, incluye la decisión del analista: el número comparable con los 8-14 min); endpoint `GET /api/v1/metrics` (requiere JWT). 5 tests nuevos, 54/54, cobertura 99% líneas.
   - **Refresco automático en la app** (PR #8): dashboard e incidentes cada 10 s mientras están abiertos (`constants/refresh.ts`).
   - Verificado en producción: columnas creadas sin pérdida de datos, endpoint responde y exige token, todas las métricas en `n: 0` (esperado hasta la campaña).
-- **Pendiente — campaña de medición (no se hizo todavía; necesaria para cerrar el punto 1 y las Conclusiones):**
+- **Campaña de medición — hecha el 14/10** (resultados abajo). Protocolo usado:
   1. Prender las 3 instancias. Abrir la app en la lista de incidentes (se refresca sola).
   2. **CU-01, 10 corridas:** brute-force manual contra la víctima con el mismo loop de SSH del 08/10 → cuando aparece el incidente, tocar BLOCK IP sin demorar → reiniciar la víctima para liberar la IP antes de la corrida siguiente.
   3. **CU-02, 10 corridas:** dejar un EICAR con nombre distinto en `/home/ubuntu/dropzone/` → ISOLATE HOST → reiniciar la víctima para revertir.
@@ -127,10 +127,19 @@ _(La más reciente arriba. Formato fijo por entrada.)_
     - Tests: `privacy.test.js`, 9 nuevos → 63/63, cobertura 99,2% líneas / 92,2% ramas.
     - App: botón "Delete account" en Perfil (confirmación, cierra la sesión), pantalla `app/privacy.tsx` (aviso de privacidad en español con la leyenda de la Disposición 10/2008), casilla de consentimiento obligatoria en el registro, ícono para `account_deleted` en Activity.
     - Documento base para el apartado legal de la tesis: `docs/privacidad-ley-25326.md` (datos tratados, artículo por artículo, supresión vs. trazabilidad, limitaciones).
-- **En progreso / a medias:** completar responsable y contacto en el aviso de privacidad (placeholder); retención todavía manual.
+  - PR #9 (privacidad) mergeado y deployado (`2b8a86c`).
+  - **Resultados de la campaña** (detalle, método, tabla por corrida y limitaciones en `docs/metricas-campana-2026-10-14.md`):
+    - Detección → ingesta: CU-01 p50 1,30 s / p95 1,71 s (n=9); CU-02 p50 1,25 s / p95 1,27 s (n=15).
+    - Ejecución de la acción: ~0,20 s en ambos (n=6 c/u).
+    - Contención total (alerta → mitigado, con decisión humana): CU-01 p50 22,6 s / p95 31,3 s; CU-02 p50 18,3 s / p95 22,5 s. Los 12: p50 **21,1 s**, p95 **31,3 s** → entre 23 y 40 veces menos que 8-14 min (93,5-96,3 % de reducción en el peor caso medido).
+    - El 94 % de la contención es la decisión del analista (incluye hasta 10 s de refresco de la app); el sistema aporta ~1,5 s.
+    - **Cotas propuestas** (p95 + margen): detección ≤ 5 s, visible en la app ≤ 15 s, acción ≤ 2 s, contención (SLA) ≤ 60 s.
+    - Primer intento: 10 EICAR seguidos sin aislar entre medio (solo sirvieron como detecciones) y una sola fuerza bruta completa; se rehicieron 5 corridas completas de cada caso con un helper `Siguiente-Corrida` (reinicia la víctima y espera el puerto 22).
+    - Observación: cada fuerza bruta genera dos alertas (5712 sshd + 5551 PAM) → dos incidentes; mejora futura: agrupar por IP.
+- **En progreso / a medias:** completar responsable y contacto en el aviso de privacidad (placeholder); retención todavía manual; incorporar las cotas a RNF-05/RNF-07 y escribir Conclusiones.
 - **Errores encontrados:** `git fetch` / `git switch` piden reintentar el borrado de carpetas (`.git/refs/remotes/origin/feature`, `.github/workflows`): bloqueo de OneDrive sobre el repo. Responder `n` es inocuo. A futuro, mover el repo fuera de OneDrive.
-- **Próximo paso concreto:** PR de la rama de privacidad → probar en el celular (eliminar cuenta, aviso, consentimiento) → campaña de medición.
-- **Estado de instancias AWS:** orchestrator **running** (prendido para el deploy del PR #7), Wazuh y víctima **stopped**.
+- **Próximo paso concreto:** pasar las cotas a la tesis (necesita el texto actual de los 11 RNF) y redactar Conclusiones; después, los puntos documentales (modelo de datos/API reales, diagramas vectoriales).
+- **Estado de instancias AWS:** las 3 **running** al terminar la campaña — apagarlas.
 
 ---
 
