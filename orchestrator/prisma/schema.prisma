@@ -20,6 +20,11 @@ model Incident {
   status          String    @default("new")
   blockedAt       DateTime?
   isolatedAt      DateTime?
+  // Metricas de tiempo de respuesta (RNF-05, ver src/metrics.js). Sin
+  // default a proposito: los incidentes anteriores a la medicion quedan en
+  // null y no contaminan las metricas con la fecha de la migracion.
+  ingestedAt      DateTime?
+  actionLatencyMs Int?
   enrichmentVt        String?
   enrichmentAbuseIpdb String?
 

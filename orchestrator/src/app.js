@@ -5,6 +5,7 @@ const { normalizeWazuhAlert, isRelevantAlert } = require("./normalize");
 const { authenticate, blockIp, isolateHost } = require("./wazuh");
 const { enrichIp } = require("./enrichment");
 const { login, requireAuth } = require("./auth");
+const { computeMetrics } = require("./metrics");
 
 const app = express();
 app.use(express.json());
@@ -54,7 +55,7 @@ app.post("/api/v1/webhook/wazuh", async (req, res) => {
     return res.status(202).json({ ignored: true, ruleId: fields.ruleId });
   }
 
-  const incident = await prisma.incident.create({ data: fields });
+  const incident = await prisma.incident.create({ data: { ...fields, ingestedAt: new Date() } });
   const ruleLabel = fields.ruleDescription ?? `Rule ${fields.ruleId}`;
   await logAudit(
     "incident_detected",
@@ -135,6 +136,9 @@ app.post("/api/v1/incidents/:id/actions/block-ip", requireAuth, async (req, res)
     return res.status(422).json({ detail: "Este incidente no tiene IP de origen para bloquear" });
   }
 
+  // actionLatencyMs: login + ejecucion en Wazuh, lo que tarda la contencion
+  // una vez que el analista confirmo (RNF-05, ver src/metrics.js).
+  const startedAt = Date.now();
   try {
     const token = await authenticate(
       process.env.WAZUH_HOST,
@@ -148,7 +152,7 @@ app.post("/api/v1/incidents/:id/actions/block-ip", requireAuth, async (req, res)
 
   const updated = await prisma.incident.update({
     where: { id: incident.id },
-    data: { status: "blocked", blockedAt: new Date() },
+    data: { status: "blocked", blockedAt: new Date(), actionLatencyMs: Date.now() - startedAt },
   });
 
   await logAudit("ip_blocked", `Blocked ${updated.srcIp} (incident #${updated.id})`);
@@ -167,6 +171,7 @@ app.post("/api/v1/incidents/:id/actions/isolate-host", requireAuth, async (req, 
     return res.status(404).json({ detail: "Incident not found" });
   }
 
+  const startedAt = Date.now();
   try {
     const token = await authenticate(
       process.env.WAZUH_HOST,
@@ -180,7 +185,7 @@ app.post("/api/v1/incidents/:id/actions/isolate-host", requireAuth, async (req, 
 
   const updated = await prisma.incident.update({
     where: { id: incident.id },
-    data: { status: "isolated", isolatedAt: new Date() },
+    data: { status: "isolated", isolatedAt: new Date(), actionLatencyMs: Date.now() - startedAt },
   });
 
   await logAudit("host_isolated", `Isolated ${updated.hostname} (incident #${updated.id})`);
@@ -191,6 +196,20 @@ app.post("/api/v1/incidents/:id/actions/isolate-host", requireAuth, async (req, 
     agentId: updated.agentId,
     status: updated.status,
   });
+});
+
+app.get("/api/v1/metrics", requireAuth, async (_req, res) => {
+  const incidents = await prisma.incident.findMany({
+    select: {
+      srcIp: true,
+      timestamp: true,
+      ingestedAt: true,
+      blockedAt: true,
+      isolatedAt: true,
+      actionLatencyMs: true,
+    },
+  });
+  res.json(computeMetrics(incidents));
 });
 
 app.get("/api/v1/audit", requireAuth, async (_req, res) => {
