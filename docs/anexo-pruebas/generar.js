@@ -39,6 +39,8 @@ const SUITES = {
   "users.test.js": ["Usuarios y control de acceso por roles", "Seguridad (RF-13)", "Acceso sin aprobación, un rol que excede sus permisos, sesiones que siguen vivas después de desactivar una cuenta, o el sistema sin ningún administrador."],
   "grouping.test.js": ["Agrupamiento de alertas", "CU-01 / CU-02", "Un mismo ataque genera varios incidentes (5712 + 5551): el analista mitiga uno y el otro queda abierto."],
   "metrics.test.js": ["Métricas de tiempo de respuesta", "RNF-05", "Cotas de rendimiento calculadas sobre datos inválidos o mezclando incidentes anteriores a la instrumentación."],
+  "automation.test.js": ["Automatización según contexto", "CU-01 / CU-02", "Una acción automática sobre un activo crítico o una IP excluida, una política que se dispara con datos faltantes, o un cambio de configuración sin permisos ni auditoría."],
+  "timeline.test.js": ["Línea de tiempo y auditoría por incidente", "Trazabilidad", "Evidencia del caso perdida al agrupar alertas, o eventos de auditoría que no se pueden atribuir a su incidente."],
   "privacy.test.js": ["Protección de datos personales", "Ley 25.326", "Datos personales conservados más de lo necesario, o una baja que borra la trazabilidad de seguridad o no quita el acceso."],
 };
 

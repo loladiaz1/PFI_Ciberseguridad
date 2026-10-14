@@ -8,6 +8,16 @@ function hashPositivesOf(alert) {
   return match ? Number(match[1]) : null;
 }
 
+// Lo que distingue a una alerta de las otras del mismo incidente: el archivo
+// (CU-02, FIM / VirusTotal) o el usuario que se intento (CU-01, sshd / PAM).
+function alertDetailOf(alert) {
+  const file = alert?.syscheck?.path ?? alert?.data?.virustotal?.source?.file ?? alert?.VirusTotal?.source?.file;
+  if (file) return `File ${file}`;
+  const user = alert?.data?.dstuser ?? alert?.data?.srcuser;
+  if (user) return `User ${user}`;
+  return null;
+}
+
 // Alerta cruda de Wazuh -> modelo Incident canonico (PLAN.md seccion 7).
 function normalizeWazuhAlert(alert) {
   const ruleId = alert?.rule?.id;
@@ -59,4 +69,4 @@ function isRelevantAlert(alert) {
   return groups.some((g) => RELEVANT_GROUPS.includes(g));
 }
 
-module.exports = { normalizeWazuhAlert, isRelevantAlert };
+module.exports = { normalizeWazuhAlert, isRelevantAlert, alertDetailOf };

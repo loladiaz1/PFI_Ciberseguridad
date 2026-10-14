@@ -64,6 +64,7 @@ export default function IncidentsList() {
                             onPress={() => router.push({ pathname: "/incident", params: { id: String(incident.id) } })}
                         >
                             <View style={styles.info}>
+                                <Text style={styles.incidentId}>#{incident.id}</Text>
                                 <Text style={styles.incidentTitle}>{incident.hostname}</Text>
                                 {/* CU-02 (malware en el host) no tiene IP atacante */}
                                 <Text style={styles.server} numberOfLines={1}>
@@ -133,6 +134,13 @@ const styles = StyleSheet.create({
     info: {
         flex: 1,
         marginRight: 12,
+    },
+
+    incidentId: {
+        color: Colors.primary,
+        fontWeight: "700",
+        fontSize: 13,
+        marginBottom: 2,
     },
 
     incidentTitle: {

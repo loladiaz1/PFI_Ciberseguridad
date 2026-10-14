@@ -90,6 +90,15 @@ async function applyRetention(prisma, { days = DEFAULT_RETENTION_DAYS, now = new
     });
   }
 
+  const oldAlerts = await prisma.incidentAlert.findMany({
+    where: { srcIp: { not: null } },
+    select: { id: true, srcIp: true, timestamp: true },
+  });
+  const expiredAlerts = oldAlerts.filter((a) => new Date(a.timestamp) < cutoff && maskIp(a.srcIp) !== a.srcIp);
+  for (const alert of dryRun ? [] : expiredAlerts) {
+    await prisma.incidentAlert.update({ where: { id: alert.id }, data: { srcIp: maskIp(alert.srcIp) } });
+  }
+
   const oldEvents = await prisma.auditEvent.findMany({ where: { createdAt: { lt: cutoff } } });
   let auditMasked = 0;
   for (const event of oldEvents) {
@@ -100,7 +109,7 @@ async function applyRetention(prisma, { days = DEFAULT_RETENTION_DAYS, now = new
     }
   }
 
-  return { cutoff, incidentsMasked: expired.length, auditMasked };
+  return { cutoff, incidentsMasked: expired.length, alertsMasked: expiredAlerts.length, auditMasked };
 }
 
 module.exports = {

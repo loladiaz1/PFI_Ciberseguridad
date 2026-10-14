@@ -30,12 +30,32 @@ export interface Incident {
   automationReason: string | null;
 }
 
+export type AuditCategory = 'access' | 'users' | 'incidents' | 'response' | 'automation' | 'other';
+
 export interface ActivityItem {
   id: number;
   type: string;
   detail: string;
+  actor: string | null;
+  incidentId: number | null;
+  category: AuditCategory;
   createdAt: string;
 }
+
+// Linea de tiempo del incidente: alertas que lo forman + eventos vinculados.
+export type TimelineEntry =
+  | {
+      kind: 'alert';
+      at: string;
+      grouped: boolean;
+      ruleId: string;
+      ruleDescription: string | null;
+      severity: number;
+      srcIp: string | null;
+      detail: string | null;
+      hashPositives: number | null;
+    }
+  | ({ kind: 'event'; at: string } & ActivityItem);
 
 export type Role = 'admin' | 'analyst' | 'auditor';
 

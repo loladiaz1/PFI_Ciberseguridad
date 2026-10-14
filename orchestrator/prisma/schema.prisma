@@ -40,6 +40,7 @@ model Incident {
   automationReason   String?
   enrichmentVt        String?
   enrichmentAbuseIpdb String?
+  alerts              IncidentAlert[]
 
   @@map("incidents")
 }
@@ -69,8 +70,12 @@ model AuditEvent {
   // anonimizarlo al eliminar la cuenta sin perder el evento (Ley 25.326,
   // ver src/privacy.js). null = evento del sistema (ej. incidente detectado).
   actor     String?
+  // Incidente al que pertenece el evento (null = no es de un incidente, ej.
+  // un login). La categoria se deriva del tipo: src/audit.js.
+  incidentId Int?
   createdAt DateTime @default(now())
 
+  @@index([incidentId])
   @@map("audit_events")
 }
 
@@ -110,4 +115,25 @@ model Asset {
   criticality String @default("medium") // low | medium | high | critical
 
   @@map("assets")
+}
+
+// Cada alerta de Wazuh que forma parte de un incidente (la primera y las que
+// se agruparon despues): la evidencia del caso. Solo los campos utiles, no la
+// alerta cruda (minimizacion de datos, Ley 25.326 art. 4).
+model IncidentAlert {
+  id              Int      @id @default(autoincrement())
+  incident        Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  incidentId      Int
+  ruleId          String
+  ruleDescription String?
+  severity        Int
+  timestamp       String // de Wazuh, igual que Incident.timestamp
+  receivedAt      DateTime @default(now())
+  srcIp           String?
+  // Lo que distingue a esta alerta: archivo (CU-02) o usuario intentado (CU-01).
+  detail          String?
+  hashPositives   Int?
+
+  @@index([incidentId])
+  @@map("incident_alerts")
 }
