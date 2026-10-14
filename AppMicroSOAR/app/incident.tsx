@@ -6,7 +6,8 @@ import BottomNav from "../components/BottomNav";
 import { BrandHeader } from "../components/ui/BrandHeader";
 import { MaterialIcons } from "@expo/vector-icons";
 import { getIncidentById } from "../services/api";
-import { severityLabel } from "../utils/severity";
+import { getStoredUser } from "../services/auth";
+import { incidentRules, severityLabel } from "../utils/severity";
 import type { Incident, MitigationAction } from "../types";
 
 // Formas que guarda orchestrator/src/enrichment.js (JSON.stringify).
@@ -18,6 +19,15 @@ export default function IncidentDetail() {
     const [incident, setIncident] = useState<Incident | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
+    // El backend rechaza la accion a un auditor (403); aca solo evitamos
+    // ofrecerle un boton que no puede usar.
+    const [canAct, setCanAct] = useState(false);
+
+    useEffect(() => {
+        getStoredUser()
+            .then((u) => setCanAct(u.role === "admin" || u.role === "analyst"))
+            .catch(() => setCanAct(false));
+    }, []);
 
     useEffect(() => {
         if (!id) return;
@@ -67,7 +77,8 @@ export default function IncidentDetail() {
             <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
 
                 <Text style={styles.title}>
-                    Rule #{incident.ruleId}
+                    {incidentRules(incident).length > 1 ? "Rules " : "Rule "}
+                    {incidentRules(incident).map((r) => `#${r}`).join(", ")}
                 </Text>
 
                 {incident.ruleDescription ? (
@@ -78,6 +89,15 @@ export default function IncidentDetail() {
 
                     <Text style={styles.label}>Detected</Text>
                     <Text style={styles.value}>{new Date(incident.timestamp).toLocaleString()}</Text>
+
+                    {incident.alertCount > 1 ? (
+                        <>
+                            <Text style={styles.label}>Grouped alerts</Text>
+                            <Text style={styles.value}>
+                                {incident.alertCount} alerts from the same attack
+                            </Text>
+                        </>
+                    ) : null}
 
                     <Text style={styles.label}>Severity</Text>
                     <View style={styles.statusRow}>
@@ -153,12 +173,16 @@ export default function IncidentDetail() {
                             <Text style={styles.block}>{actionLabel}</Text>
                         </View>
 
-                        <TouchableOpacity
-                            style={styles.button}
-                            onPress={() => router.push({ pathname: "/auth", params: { id: String(incident.id), action } })}
-                        >
-                            <Text style={styles.buttonText}>{actionLabel}</Text>
-                        </TouchableOpacity>
+                        {canAct ? (
+                            <TouchableOpacity
+                                style={styles.button}
+                                onPress={() => router.push({ pathname: "/auth", params: { id: String(incident.id), action } })}
+                            >
+                                <Text style={styles.buttonText}>{actionLabel}</Text>
+                            </TouchableOpacity>
+                        ) : (
+                            <Text style={styles.readOnly}>Read-only access: an analyst must run this action.</Text>
+                        )}
                     </>
                 )}
 
@@ -279,6 +303,12 @@ const styles = StyleSheet.create({
         fontWeight: "bold",
         color: Colors.danger,
         fontSize: 20
+    },
+
+    readOnly: {
+        marginTop: 30,
+        color: Colors.textSecondary,
+        textAlign: "center",
     },
 
     button: {

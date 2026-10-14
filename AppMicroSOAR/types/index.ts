@@ -20,6 +20,9 @@ export interface Incident {
   // JSON serializado por el backend (orchestrator/src/enrichment.js).
   enrichmentVt: string | null;
   enrichmentAbuseIpdb: string | null;
+  // Agrupamiento: alertas del mismo ataque sumadas a este incidente.
+  alertCount: number;
+  ruleIds: string | null; // JSON con todas las reglas; null = solo ruleId
 }
 
 export interface ActivityItem {
@@ -29,10 +32,15 @@ export interface ActivityItem {
   createdAt: string;
 }
 
+export type Role = 'admin' | 'analyst' | 'auditor';
+export type UserStatus = 'pending' | 'active' | 'disabled';
+
 export interface UserProfile {
   id: number;
   username: string;
   name: string;
   email: string;
-  role: string;
+  role: Role;
+  status: UserStatus;
+  createdAt: string;
 }

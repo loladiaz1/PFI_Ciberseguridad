@@ -5,9 +5,12 @@ const mockAlert = require("../mocks/wazuh_ssh_bruteforce.json");
 const { app } = require("../src/app");
 const { prisma } = require("../src/db");
 const { authenticate, blockIp } = require("../src/wazuh");
-const { login } = require("../src/auth");
+const { adminToken } = require("./helpers");
 
-const token = login(process.env.AUTH_USER, process.env.AUTH_PASSWORD);
+let token;
+beforeAll(async () => {
+  token = await adminToken();
+});
 
 afterAll(async () => {
   await prisma.$disconnect();

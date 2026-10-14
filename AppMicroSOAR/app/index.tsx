@@ -28,6 +28,9 @@ export default function LoginScreen() {
         setError("Too many attempts. Please wait a few minutes and try again.");
       } else if (isAxiosError(err) && err.response?.status === 401) {
         setError("Invalid credentials");
+      } else if (isAxiosError(err) && err.response?.status === 403) {
+        // Cuenta pendiente de aprobacion o desactivada (mensaje del backend).
+        setError(err.response.data?.detail ?? "Account not active");
       } else {
         setError("Unable to connect to the server");
       }

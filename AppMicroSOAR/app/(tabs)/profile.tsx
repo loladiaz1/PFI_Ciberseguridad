@@ -206,6 +206,13 @@ export default function ProfileScreen() {
           <Text style={styles.logoutButtonText}>Log Out</Text>
         </TouchableOpacity>
 
+        {user.role === "admin" ? (
+          <TouchableOpacity style={styles.adminButton} onPress={() => router.push("/users")}>
+            <MaterialCommunityIcons name="account-group" size={18} color={Colors.primary} />
+            <Text style={styles.adminButtonText}>Manage users</Text>
+          </TouchableOpacity>
+        ) : null}
+
         <TouchableOpacity style={styles.linkButton} onPress={() => router.push("/privacy")}>
           <MaterialCommunityIcons name="shield-account-outline" size={18} color={Colors.textSecondary} />
           <Text style={styles.linkButtonText}>Privacy policy</Text>
@@ -348,6 +355,23 @@ const styles = StyleSheet.create({
 
   logoutButtonText: {
     color: Colors.danger,
+    fontWeight: "700",
+  },
+
+  adminButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    marginTop: 14,
+    padding: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+  },
+
+  adminButtonText: {
+    color: Colors.primary,
     fontWeight: "700",
   },
 
