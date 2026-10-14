@@ -14,7 +14,8 @@
 
 | Dato | Titular | Dónde se guarda | Finalidad |
 |---|---|---|---|
-| Usuario, nombre, email, rol | Analista | Base del orquestador (`User`) | Identificar al operador de la plataforma |
+| Usuario, nombre, email, rol, estado de la cuenta | Analista | Base del orquestador (`User`) | Identificar al operador y controlar su acceso |
+| Contraseña | Analista | Base del orquestador, solo como hash bcrypt (nunca en texto plano ni expuesta por la API) | Autenticación |
 | Registro de acciones (login, bloqueo de IP, aislamiento), con fecha y hora | Analista | Base del orquestador (`AuditEvent`, campo `actor`) | Trazabilidad de las acciones críticas de seguridad |
 | Token de sesión (JWT) | Analista | Almacenamiento seguro del celular (`expo-secure-store`) | Autenticación |
 | Dirección IP de origen de un ataque | Tercero (atacante) | `Incident.srcIp`, enriquecimiento, detalle de auditoría | Contener el ataque y evaluar su riesgo |
@@ -28,12 +29,12 @@ datos, puede identificar a una persona.
 | Artículo | Exigencia | Cómo se cumple | Implementación |
 |---|---|---|---|
 | Art. 4 — Calidad de los datos | Datos adecuados, pertinentes y no excesivos para la finalidad; destruirlos cuando dejan de ser necesarios (inc. 7) | Se recolecta lo mínimo (no hay DNI, teléfono, ubicación ni biometría). **Política de retención:** a los 90 días, las IPs de origen se enmascaran a su red (/24 en IPv4, /64 en IPv6) y se descarta la información de reputación asociada | `orchestrator/src/privacy.js` → `applyRetention`; `orchestrator/scripts/aplicar-retencion.js` (plazo configurable con `RETENTION_DAYS`) |
-| Art. 5 — Consentimiento | Consentimiento libre, expreso e informado | El registro exige aceptar la política de privacidad | `AppMicroSOAR/app/register.tsx` (casilla obligatoria) |
+| Art. 5 — Consentimiento | Consentimiento libre, expreso e informado | El registro exige aceptar la política de privacidad; la cuenta queda pendiente hasta que un administrador la aprueba | `AppMicroSOAR/app/register.tsx` (casilla obligatoria); `POST /api/v1/auth/register` |
 | Art. 6 — Información al titular | Informar finalidad, destinatarios, responsable, derechos | Pantalla "Política de privacidad", accesible sin sesión y desde Perfil, con la leyenda exigida por la Disposición 10/2008 | `AppMicroSOAR/app/privacy.tsx` |
-| Art. 9 — Seguridad de los datos | Medidas técnicas que garanticen la seguridad y confidencialidad | Canal cifrado y privado (Tailscale, sin puertos expuestos a internet); autenticación JWT en cada request; step-up biométrico para acciones críticas; credenciales del servidor con permisos `600`; despliegue sin credenciales guardadas (OIDC) | Ver capítulo de arquitectura y `PLAN.md` |
+| Art. 9 — Seguridad de los datos | Medidas técnicas que garanticen la seguridad y confidencialidad | Canal cifrado y privado (Tailscale, sin puertos expuestos a internet); autenticación JWT en cada request, con verificación de que el usuario siga activo; control de acceso por roles (admin / analyst / auditor); contraseñas con hash bcrypt; step-up biométrico para acciones críticas y administrativas; credenciales del servidor con permisos `600`; despliegue sin credenciales guardadas (OIDC) | Ver capítulo de arquitectura y `PLAN.md` |
 | Art. 12 — Transferencia internacional | Transferir solo a países con protección adecuada o con resguardos | La IP del atacante se consulta en VirusTotal y AbuseIPDB, y la plataforma se aloja en AWS (EE.UU.). Se informa en la política de privacidad. **Pendiente de análisis**: base legal de la transferencia (finalidad de seguridad / cláusulas contractuales de los proveedores) | `orchestrator/src/enrichment.js`; `AppMicroSOAR/app/privacy.tsx` |
 | Art. 14 — Derecho de acceso | Acceso gratuito a los propios datos | El analista ve su perfil y su actividad en la app | `GET /api/v1/me`, `GET /api/v1/audit` |
-| Art. 16 — Rectificación y supresión | Rectificar y suprimir los datos | Edición del perfil; **eliminación de la cuenta** desde Perfil | `PUT /api/v1/me`; `DELETE /api/v1/me` |
+| Art. 16 — Rectificación y supresión | Rectificar y suprimir los datos | Edición del perfil; **eliminación de la cuenta** desde Perfil, que también quita el acceso en el acto; un administrador puede dar de baja una cuenta con el mismo procedimiento | `PUT /api/v1/me`; `DELETE /api/v1/me`; `DELETE /api/v1/users/:username` |
 
 ## 3. Supresión sin perder la trazabilidad
 
@@ -43,7 +44,7 @@ y la necesidad de conservar el registro de las acciones de seguridad
 que no quede rastro de quién aisló un equipo. La solución adoptada es la
 **seudonimización**:
 
-1. Al eliminar la cuenta se borra el perfil (nombre y email).
+1. Al eliminar la cuenta se borra el usuario (nombre, email, hash de la contraseña): el acceso se pierde en la siguiente request.
 2. En cada evento de auditoría, el usuario se reemplaza por un seudónimo
    (`usuario-eliminado-` + 8 caracteres de un HMAC-SHA256 con un secreto del
    servidor). Los eventos de la misma persona siguen agrupados, pero sin el
@@ -76,10 +77,9 @@ enmascara solo lo vencido y no vuelve a tocar lo ya enmascarado.
 
 - La retención se ejecuta a mano (`aplicar-retencion.js`); automatizarla con
   una tarea programada en la instancia.
-- Las credenciales del MVP son de configuración (un solo usuario): eliminar
-  la cuenta borra los datos personales guardados, pero no la credencial. Con
-  usuarios reales en base de datos, la eliminación debería además
-  deshabilitar el acceso.
+- El último administrador activo no puede eliminar su cuenta (protección
+  contra dejar el sistema sin administración): primero hay que designar otro
+  administrador.
 - Registro de la base de datos ante la Agencia de Acceso a la Información
   Pública (art. 21) y designación formal del responsable: corresponden a la
   organización que adopte la plataforma.
