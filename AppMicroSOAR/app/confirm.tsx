@@ -7,6 +7,7 @@ import { BrandHeader } from "../components/ui/BrandHeader";
 import { getIncidentById } from "../services/api";
 import { severityLabel } from "../utils/severity";
 import type { Incident, MitigationAction } from "../types";
+import { S } from "@/constants/strings";
 
 export default function ConfirmScreen() {
   const { id, action } = useLocalSearchParams<{ id: string; action: MitigationAction }>();
@@ -41,34 +42,34 @@ export default function ConfirmScreen() {
         <Text style={styles.icon}>⚠️</Text>
 
         <Text style={styles.title}>
-          Confirm Action
+          {S.confirm.title}
         </Text>
 
         <Text style={styles.subtitle}>
-          {isIsolate ? "You are about to isolate the following host" : "You are about to block the following IP"}
+          {isIsolate ? S.confirm.subtitleIsolate : S.confirm.subtitleBlock}
         </Text>
 
         <View style={styles.card}>
 
           {incident.srcIp ? (
             <>
-              <Text style={styles.label}>Attacker IP</Text>
+              <Text style={styles.label}>{S.fields.attackerIp}</Text>
               <Text style={styles.value}>{incident.srcIp}</Text>
             </>
           ) : null}
 
-          <Text style={styles.label}>Target</Text>
+          <Text style={styles.label}>{S.fields.target}</Text>
           <Text style={styles.value}>{incident.hostname}</Text>
 
-          <Text style={styles.label}>Severity</Text>
+          <Text style={styles.label}>{S.fields.severity}</Text>
           <Text style={[styles.critical, { color: severity.color }]}>{severity.label}</Text>
 
         </View>
 
         <Text style={styles.warning}>
           {isIsolate
-            ? "This action will cut all network traffic of the host, except its channel to the Wazuh manager."
-            : "This action will update the firewall rules and block the attacker."}
+            ? S.confirm.warningIsolate
+            : S.confirm.warningBlock}
         </Text>
 
         <TouchableOpacity
@@ -79,7 +80,7 @@ export default function ConfirmScreen() {
           })}
         >
           <Text style={styles.buttonText}>
-            {isIsolate ? "ISOLATE HOST" : "BLOCK IP"}
+            {isIsolate ? S.actions.isolateHost : S.actions.blockIp}
           </Text>
         </TouchableOpacity>
 
@@ -87,7 +88,7 @@ export default function ConfirmScreen() {
           onPress={() => router.back()}
         >
           <Text style={styles.cancel}>
-            Cancel
+            {S.common.cancel}
           </Text>
         </TouchableOpacity>
 
@@ -104,6 +105,7 @@ const styles = StyleSheet.create({
   container:{
     flex:1,
     backgroundColor:Colors.background,
+    paddingTop:60,
   },
 
   scroll:{

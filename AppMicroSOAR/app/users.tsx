@@ -11,15 +11,16 @@ import { getStoredUser } from "@/services/auth";
 import { confirmWithBiometrics } from "@/services/stepUp";
 import Colors from "@/styles/colors";
 import type { Role, UserProfile, UserStatus } from "@/types";
+import { S } from "@/constants/strings";
 
 // Gestion de usuarios (solo admin): aprobar o rechazar registros, cambiar
 // el rol y desactivar / reactivar / eliminar cuentas. Cada accion pide
 // step-up biometrico; el backend vuelve a validar el rol y queda auditada.
 const ROLES: Role[] = ["admin", "analyst", "auditor"];
 const SECTIONS: { status: UserStatus; title: string }[] = [
-  { status: "pending", title: "Pending approval" },
-  { status: "active", title: "Active" },
-  { status: "disabled", title: "Disabled" },
+  { status: "pending", title: S.users.sections.pending },
+  { status: "active", title: S.users.sections.active },
+  { status: "disabled", title: S.users.sections.disabled },
 ];
 
 export default function UsersScreen() {
@@ -35,7 +36,7 @@ export default function UsersScreen() {
         setMe(current.username);
         setError("");
       })
-      .catch(() => setError("Could not load users"))
+      .catch(() => setError(S.users.loadError))
       .finally(() => setLoading(false));
   }, []);
 
@@ -55,20 +56,20 @@ export default function UsersScreen() {
       await load();
     } catch (err) {
       const detail = isAxiosError(err) ? err.response?.data?.detail : undefined;
-      Alert.alert("Action not allowed", detail ?? "Something went wrong. Try again.");
+      Alert.alert(S.users.notAllowed, detail ?? S.common.genericError);
     }
   };
 
   const confirmRemove = (user: UserProfile, isRejection: boolean) => {
     Alert.alert(
-      isRejection ? "Reject registration" : "Remove user",
-      `${user.username} will be deleted. Their audit records are kept, anonymized.`,
+      isRejection ? S.users.rejectTitle : S.users.removeTitle,
+      S.users.removeBody(user.username),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: S.common.cancel, style: "cancel" },
         {
-          text: isRejection ? "Reject" : "Remove",
+          text: isRejection ? S.users.reject : S.users.remove,
           style: "destructive",
-          onPress: () => run(`Confirm to remove ${user.username}`, () => removeUser(user.username)),
+          onPress: () => run(S.users.confirmRemove(user.username), () => removeUser(user.username)),
         },
       ]
     );
@@ -81,7 +82,7 @@ export default function UsersScreen() {
       <View key={user.username} style={styles.card}>
         <Text style={styles.name}>
           {user.name}
-          {isMe ? <Text style={styles.you}>  (you)</Text> : null}
+          {isMe ? <Text style={styles.you}>{S.users.you}</Text> : null}
         </Text>
         <Text style={styles.username}>{user.username}</Text>
 
@@ -90,18 +91,18 @@ export default function UsersScreen() {
             <TouchableOpacity
               style={[styles.button, styles.primary]}
               onPress={() =>
-                run(`Confirm to approve ${user.username}`, () => updateUserAccess(user.username, { status: "active" }))
+                run(S.users.confirmApprove(user.username), () => updateUserAccess(user.username, { status: "active" }))
               }
             >
-              <Text style={styles.buttonText}>Approve</Text>
+              <Text style={styles.buttonText}>{S.users.approve}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={[styles.button, styles.danger]} onPress={() => confirmRemove(user, true)}>
-              <Text style={styles.dangerText}>Reject</Text>
+              <Text style={styles.dangerText}>{S.users.reject}</Text>
             </TouchableOpacity>
           </View>
         ) : (
           <>
-            <Text style={styles.label}>Role</Text>
+            <Text style={styles.label}>{S.fields.role}</Text>
             <View style={styles.roles}>
               {ROLES.map((role) => (
                 <TouchableOpacity
@@ -109,10 +110,10 @@ export default function UsersScreen() {
                   style={[styles.chip, user.role === role && styles.chipActive]}
                   disabled={user.role === role}
                   onPress={() =>
-                    run(`Confirm role change to ${role}`, () => updateUserAccess(user.username, { role }))
+                    run(S.users.confirmRole(S.roles[role]), () => updateUserAccess(user.username, { role }))
                   }
                 >
-                  <Text style={[styles.chipText, user.role === role && styles.chipTextActive]}>{role}</Text>
+                  <Text style={[styles.chipText, user.role === role && styles.chipTextActive]}>{S.roles[role]}</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -122,17 +123,17 @@ export default function UsersScreen() {
                 style={[styles.button, styles.secondary]}
                 onPress={() => {
                   const status = user.status === "active" ? "disabled" : "active";
-                  run(`Confirm to ${status === "active" ? "enable" : "disable"} ${user.username}`, () =>
+                  run(S.users.confirmStatus(status === "active", user.username), () =>
                     updateUserAccess(user.username, { status })
                   );
                 }}
               >
-                <Text style={styles.secondaryText}>{user.status === "active" ? "Disable" : "Enable"}</Text>
+                <Text style={styles.secondaryText}>{user.status === "active" ? S.users.disable : S.users.enable}</Text>
               </TouchableOpacity>
               {/* La cuenta propia se elimina desde Perfil (DELETE /me). */}
               {isMe ? null : (
                 <TouchableOpacity style={[styles.button, styles.danger]} onPress={() => confirmRemove(user, false)}>
-                  <Text style={styles.dangerText}>Remove</Text>
+                  <Text style={styles.dangerText}>{S.users.remove}</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -149,11 +150,11 @@ export default function UsersScreen() {
       <ScrollView contentContainerStyle={styles.content}>
         <TouchableOpacity style={styles.back} onPress={() => router.back()}>
           <MaterialCommunityIcons name="arrow-left" size={20} color={Colors.textSecondary} />
-          <Text style={styles.backText}>Back</Text>
+          <Text style={styles.backText}>{S.common.back}</Text>
         </TouchableOpacity>
 
-        <Text style={styles.title}>Users</Text>
-        <Text style={styles.subtitle}>Approve registrations and manage access</Text>
+        <Text style={styles.title}>{S.users.title}</Text>
+        <Text style={styles.subtitle}>{S.users.subtitle}</Text>
 
         {loading && <ActivityIndicator size="large" color={Colors.primary} style={styles.spinner} />}
         {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -164,9 +165,7 @@ export default function UsersScreen() {
             if (group.length === 0) return null;
             return (
               <View key={status}>
-                <Text style={styles.section}>
-                  {title} ({group.length})
-                </Text>
+                <Text style={styles.section}>{S.users.section(title, group.length)}</Text>
                 {group.map(renderUser)}
               </View>
             );

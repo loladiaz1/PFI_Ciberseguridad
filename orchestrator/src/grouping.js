@@ -7,9 +7,9 @@
 //
 // Criterio: una alerta se suma a un incidente existente si es del mismo
 // agente y la misma IP de origen (null para CU-02: mismo host infectado), el
-// incidente sigue abierto ("new") y tuvo actividad dentro de la ventana. Si
-// ya se mitigo, la alerta nueva es un intento POSTERIOR a la contencion y
-// abre otro incidente, para que se vea.
+// incidente sigue abierto ("new", sin cerrar) y tuvo actividad dentro de la
+// ventana. Si ya se mitigo o se cerro, la alerta nueva es un intento
+// POSTERIOR y abre otro incidente, para que se vea.
 const DEFAULT_WINDOW_MS = 10 * 60 * 1000;
 
 // GROUP_WINDOW_MS=0 desactiva el agrupamiento (lo usan los tests que
@@ -26,6 +26,7 @@ async function findOpenIncident(prisma, fields, now = new Date()) {
   return prisma.incident.findFirst({
     where: {
       status: "new",
+      closedAt: null,
       agentId: fields.agentId,
       srcIp: fields.srcIp,
       lastSeenAt: { gte: new Date(now.getTime() - windowMs) },

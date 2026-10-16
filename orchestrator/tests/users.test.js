@@ -62,7 +62,7 @@ describe("registro con aprobacion", () => {
     const resp = await login("nuevo2@test.dev");
 
     expect(resp.status).toBe(403);
-    expect(resp.body.detail).toMatch(/pending/i);
+    expect(resp.body.detail).toMatch(/pendiente/i);
   });
 
   test("un admin la aprueba y recien ahi puede entrar", async () => {
@@ -75,7 +75,7 @@ describe("registro con aprobacion", () => {
     expect(approve.body.passwordHash).toBeUndefined();
     expect((await login("nuevo3@test.dev")).status).toBe(200);
     const event = await prisma.auditEvent.findFirst({ where: { type: "user_updated" }, orderBy: { id: "desc" } });
-    expect(event.detail).toBe("User nuevo3@test.dev: approved");
+    expect(event.detail).toBe("Usuario nuevo3@test.dev: aprobado");
     expect(event.actor).toBe(process.env.AUTH_USER);
   });
 
@@ -167,11 +167,11 @@ describe("gestion de usuarios (admin)", () => {
     await createUser({ username: "audita@test.dev", role: "analyst", status: "active" });
     await request(app).patch("/api/v1/users/audita@test.dev").set(admin).send({ status: "disabled", role: "auditor" });
     let event = await prisma.auditEvent.findFirst({ where: { type: "user_updated" }, orderBy: { id: "desc" } });
-    expect(event.detail).toBe("User audita@test.dev: status active -> disabled, role analyst -> auditor");
+    expect(event.detail).toBe("Usuario audita@test.dev: estado active -> disabled, rol analyst -> auditor");
 
     await request(app).patch("/api/v1/users/audita@test.dev").set(admin).send({});
     event = await prisma.auditEvent.findFirst({ where: { type: "user_updated" }, orderBy: { id: "desc" } });
-    expect(event.detail).toBe("User audita@test.dev: no changes");
+    expect(event.detail).toBe("Usuario audita@test.dev: sin cambios");
   });
 
   test("rechazar un registro lo elimina y seudonimiza su rastro", async () => {

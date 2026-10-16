@@ -14,6 +14,8 @@ const { computeMetrics } = require("../src/metrics");
 const {
   ensureAutomationDefaults,
   ipMatches,
+  isValidAllowlistEntry,
+  policyStats,
   evaluate,
   runAutomation,
 } = require("../src/automation");
@@ -26,9 +28,23 @@ let admin;
 
 // Configuracion conocida para cada test: modo, politicas habilitadas y
 // criticidad del agente 001 (la victima de laboratorio).
-async function configure({ mode = "active", enable = [], allowlist = [], criticality = "low" } = {}) {
+// defaultCriticality "medium" y un cortacircuitos alto por defecto: los
+// tests que no los prueban no deben depender de ellos (los e2e ejecutan
+// varias acciones automaticas en pocos segundos).
+async function configure({
+  mode = "active",
+  enable = [],
+  allowlist = [],
+  criticality = "low",
+  defaultCriticality = "medium",
+  maxActions = 1000,
+  windowMinutes = 10,
+} = {}) {
   await ensureAutomationDefaults();
-  await prisma.automationSettings.update({ where: { id: 1 }, data: { mode, allowlist: JSON.stringify(allowlist) } });
+  await prisma.automationSettings.update({
+    where: { id: 1 },
+    data: { mode, allowlist: JSON.stringify(allowlist), defaultCriticality, maxActions, windowMinutes },
+  });
   await prisma.automationPolicy.updateMany({ data: { enabled: false } });
   if (enable.length) await prisma.automationPolicy.updateMany({ where: { key: { in: enable } }, data: { enabled: true } });
   await prisma.asset.upsert({
@@ -74,21 +90,21 @@ describe("motor de decision (evaluate)", () => {
 
   test("modo off: no evalua nada", () => {
     const r = evaluate({ incident: incident(), settings: { ...settings, mode: "off" }, policies: [policy()], asset: null });
-    expect(r).toEqual({ decision: "none", policy: null, reason: "Automation off" });
+    expect(r).toEqual({ decision: "none", policy: null, reason: "Automatización apagada" });
   });
 
   test("un activo critico nunca se automatiza, aunque una politica lo permita", () => {
     const permissive = policy({ conditions: { maxAssetCriticality: "critical" } });
     const r = evaluate({ incident: incident(), settings, policies: [permissive], asset: { criticality: "critical" } });
     expect(r.decision).toBe("none");
-    expect(r.reason).toMatch(/Critical asset/);
+    expect(r.reason).toMatch(/Activo crítico/);
   });
 
   test("una IP de la lista de exclusion nunca se bloquea (exacta o por CIDR)", () => {
     for (const entry of ["198.51.100.5", "198.51.100.0/24"]) {
       const r = evaluate({ incident: incident(), settings: { ...settings, allowlist: [entry] }, policies: [policy()], asset: null });
       expect(r.decision).toBe("none");
-      expect(r.reason).toMatch(/allowlist/);
+      expect(r.reason).toMatch(/lista de exclusión/);
     }
   });
 
@@ -108,18 +124,18 @@ describe("motor de decision (evaluate)", () => {
     const disabled = policy({ enabled: false });
     const otherUseCase = policy({ useCase: "CU-02" });
     const r = evaluate({ incident: incident(), settings, policies: [disabled, otherUseCase], asset: null });
-    expect(r.reason).toBe("No enabled policy for this use case");
+    expect(r.reason).toBe("No hay políticas activas para este caso de uso");
   });
 
   test("condiciones de pais, VirusTotal, hash y criticidad", () => {
     const geo = policy({ conditions: { fromCountries: ["CN"] } });
-    expect(evaluate({ incident: incident(), settings, policies: [geo], asset: null }).reason).toMatch(/country RU not in CN/);
+    expect(evaluate({ incident: incident(), settings, policies: [geo], asset: null }).reason).toMatch(/país RU fuera de CN/);
 
     const vt = policy({ conditions: { minVtMalicious: 5 } });
     expect(evaluate({ incident: incident({ enrichmentVt: JSON.stringify({ malicious: 7 }) }), settings, policies: [vt], asset: null }).decision).toBe("execute");
 
     const crit = policy({ conditions: { maxAssetCriticality: "low" } });
-    expect(evaluate({ incident: incident(), settings, policies: [crit], asset: null }).reason).toMatch(/asset medium > low/);
+    expect(evaluate({ incident: incident(), settings, policies: [crit], asset: null }).reason).toMatch(/activo medium > low/);
 
     const malware = policy({ useCase: "CU-02", action: "isolate-host", conditions: { minHashPositives: 10 } });
     expect(evaluate({ incident: incident({ srcIp: null, hashPositives: 3 }), settings, policies: [malware], asset: null }).reason).toMatch(/hashPositives 3 < 10/);
@@ -158,7 +174,7 @@ describe("de punta a punta (webhook -> decision -> Wazuh)", () => {
     expect(incident.actionLatencyMs).toBeGreaterThanOrEqual(0);
     const event = await prisma.auditEvent.findFirst({ where: { type: "host_isolated" }, orderBy: { id: "desc" } });
     expect(event.actor).toBe("automation");
-    expect(event.detail).toMatch(/automatically, policy "Malware confirmado por VirusTotal"/);
+    expect(event.detail).toMatch(/automático \(política "Malware confirmado por VirusTotal"\)/);
   });
 
   test("CU-02 en modo simulacion: registra lo que haria y no ejecuta", async () => {
@@ -206,7 +222,7 @@ describe("de punta a punta (webhook -> decision -> Wazuh)", () => {
     const created = await webhook(malwareAlert);
 
     expect(isolateHost).not.toHaveBeenCalled();
-    expect((await prisma.incident.findUnique({ where: { id: created.body.id } })).automationReason).toMatch(/Critical asset/);
+    expect((await prisma.incident.findUnique({ where: { id: created.body.id } })).automationReason).toMatch(/Activo crítico/);
   });
 
   test("si Wazuh rechaza, el incidente queda abierto para el analista y se audita la falla", async () => {
@@ -218,7 +234,7 @@ describe("de punta a punta (webhook -> decision -> Wazuh)", () => {
     const incident = await prisma.incident.findUnique({ where: { id: created.body.id } });
     expect(incident.status).toBe("new");
     expect(incident.automationDecision).toBe("failed");
-    expect(incident.automationReason).toMatch(/Wazuh rejected: agente desconectado/);
+    expect(incident.automationReason).toMatch(/Wazuh rechazó la acción: agente desconectado/);
     expect(await prisma.auditEvent.count({ where: { type: "automation_failed" } })).toBeGreaterThanOrEqual(1);
   });
 
@@ -288,7 +304,7 @@ describe("configuracion (endpoints)", () => {
     expect(resp.body.settings.allowlist).toEqual(["10.0.0.0/8"]);
     expect(resp.body.settings.updatedBy).toBe(process.env.AUTH_USER);
     const event = await prisma.auditEvent.findFirst({ where: { type: "automation_updated" }, orderBy: { id: "desc" } });
-    expect(event.detail).toBe("Settings: mode -> off, allowlist (2)");
+    expect(event.detail).toMatch(/^Ajustes: mode \w+ -> off, allowlist .* -> \["10\.0\.0\.0\/8"\]$/);
     expect(event.actor).toBe(process.env.AUTH_USER);
   });
 
@@ -343,6 +359,133 @@ describe("configuracion (endpoints)", () => {
     await ensureAutomationDefaults();
 
     expect((await prisma.automationSettings.findUnique({ where: { id: 1 } })).mode).toBe("off");
+  });
+});
+
+describe("mejoras del 16/10", () => {
+  test("lista de exclusion con IPv6 (exacta y rango): antes nunca coincidia y la IP se bloqueaba", () => {
+    expect(ipMatches("2001:db8::5", "2001:db8::5")).toBe(true);
+    expect(ipMatches("2001:db8:85a3::1", "2001:db8::/32")).toBe(true);
+    expect(ipMatches("2001:db9::1", "2001:db8::/32")).toBe(false);
+    expect(ipMatches("10.0.0.1", "2001:db8::/32")).toBe(false); // familias distintas
+    expect(isValidAllowlistEntry("2001:db8::/32")).toBe(true);
+    expect(isValidAllowlistEntry("2001:db8::/200")).toBe(false);
+    expect(isValidAllowlistEntry("10.0.0.0/x")).toBe(false);
+    expect(isValidAllowlistEntry("no-es-ip")).toBe(false);
+
+    const policy = { name: "p", enabled: true, useCase: "CU-01", action: "block-ip", order: 1, conditions: {} };
+    const r = evaluate({
+      incident: { srcIp: "2001:db8::66", severity: 10, enrichmentAbuseIpdb: null, enrichmentVt: null, hashPositives: null },
+      settings: { mode: "active", allowlist: ["2001:db8::/32"], defaultCriticality: "low" },
+      policies: [policy],
+      asset: null,
+    });
+    expect(r.decision).toBe("none");
+    expect(r.reason).toMatch(/lista de exclusión/);
+  });
+
+  test("la allowlist rechaza entradas invalidas", async () => {
+    const resp = await request(app).put("/api/v1/automation/settings").set(admin).send({ allowlist: ["10.0.0.0/8", "mi-servidor"] });
+    expect(resp.status).toBe(422);
+    expect(resp.body.detail).toMatch(/mi-servidor/);
+  });
+
+  test("activo fuera del inventario: criticidad alta por defecto, no se automatiza", async () => {
+    await configure({ mode: "active", enable: ["fuerza-bruta-mala-reputacion"], defaultCriticality: "high" });
+    enrichIp.mockResolvedValue({ vt: null, abuseipdb: abuse(99) });
+
+    const created = await webhook(bruteforceAlert); // agente 000, fuera del inventario
+
+    const incident = await prisma.incident.findUnique({ where: { id: created.body.id } });
+    expect(blockIp).not.toHaveBeenCalled();
+    expect(incident.automationReason).toMatch(/activo high > medium/);
+  });
+
+  test("cortacircuitos: al llegar al limite pasa sola a simulacion, avisa, y el caso queda para el analista", async () => {
+    // Agente propio: cada malware abre su incidente (agrupamiento apagado).
+    await configure({ mode: "active", enable: ["malware-confirmado"], maxActions: 2, windowMinutes: 10 });
+    await prisma.auditEvent.deleteMany({ where: { actor: "automation", type: { in: ["ip_blocked", "host_isolated"] } } });
+    const hosts = ["c1", "c2", "c3"].map((n, i) => ({ ...malwareAlert, agent: { id: `00${i + 1}`, name: `breaker-${n}` } }));
+    for (const id of ["002", "003"]) {
+      await prisma.asset.upsert({ where: { agentId: id }, update: { criticality: "low" }, create: { agentId: id, name: id, criticality: "low" } });
+    }
+
+    const first = await webhook(hosts[0]);
+    const second = await webhook(hosts[1]);
+    const third = await webhook(hosts[2]);
+
+    expect(isolateHost).toHaveBeenCalledTimes(2);
+    expect((await prisma.incident.findUnique({ where: { id: first.body.id } })).automationDecision).toBe("executed");
+    expect((await prisma.incident.findUnique({ where: { id: second.body.id } })).automationDecision).toBe("executed");
+    const paused = await prisma.incident.findUnique({ where: { id: third.body.id } });
+    expect(paused.status).toBe("new");
+    expect(paused.automationDecision).toBe("simulated");
+    expect(paused.automationReason).toMatch(/cortacircuitos activado: 2 acciones automáticas en 10 min \(límite 2\)/);
+
+    const settings = await prisma.automationSettings.findUnique({ where: { id: 1 } });
+    expect(settings.mode).toBe("simulate");
+    expect(settings.updatedBy).toBe("automation");
+    const event = await prisma.auditEvent.findFirst({ where: { type: "automation_paused" }, orderBy: { id: "desc" } });
+    expect(event.incidentId).toBe(third.body.id);
+  });
+
+  test("el admin ajusta el cortacircuitos y la criticidad por defecto; se valida y se audita antes -> despues", async () => {
+    await configure({ mode: "simulate", maxActions: 5, windowMinutes: 10, defaultCriticality: "high" });
+    const put = (data) => request(app).put("/api/v1/automation/settings").set(admin).send(data);
+
+    expect((await put({ maxActions: 0 })).status).toBe(422);
+    expect((await put({ windowMinutes: 2000 })).status).toBe(422);
+    expect((await put({ maxActions: 2.5 })).status).toBe(422);
+    expect((await put({ defaultCriticality: "extrema" })).status).toBe(422);
+
+    const resp = await put({ maxActions: 3, windowMinutes: 30, defaultCriticality: "critical" });
+    expect(resp.status).toBe(200);
+    expect(resp.body.settings).toMatchObject({ maxActions: 3, windowMinutes: 30, defaultCriticality: "critical" });
+    const event = await prisma.auditEvent.findFirst({ where: { type: "automation_updated" }, orderBy: { id: "desc" } });
+    expect(event.detail).toBe("Ajustes: defaultCriticality high -> critical, maxActions 5 -> 3, windowMinutes 10 -> 30");
+
+    await put({ maxActions: 3 });
+    const same = await prisma.auditEvent.findFirst({ where: { type: "automation_updated" }, orderBy: { id: "desc" } });
+    expect(same.detail).toBe("Ajustes: sin cambios");
+  });
+
+  test("politicas y activos tambien se auditan con el valor anterior", async () => {
+    const { body } = await request(app).get("/api/v1/automation").set(admin);
+    const policy = body.policies.find((p) => p.key === "fuerza-bruta-pais-alto-riesgo");
+    await request(app).put(`/api/v1/automation/policies/${policy.id}`).set(admin).send({ enabled: !policy.enabled });
+    let event = await prisma.auditEvent.findFirst({ where: { type: "automation_updated" }, orderBy: { id: "desc" } });
+    expect(event.detail).toBe(`Política "${policy.name}": enabled ${policy.enabled} -> ${!policy.enabled}`);
+
+    await prisma.asset.deleteMany({ where: { agentId: "055" } });
+    await request(app).put("/api/v1/assets/055").set(admin).send({ criticality: "low" });
+    await request(app).put("/api/v1/assets/055").set(admin).send({ criticality: "high" });
+    event = await prisma.auditEvent.findFirst({ where: { type: "automation_updated" }, orderBy: { id: "desc" } });
+    expect(event.detail).toBe("Activo agent-055 (055): criticidad low -> high");
+  });
+
+  test("precision por politica, con los veredictos de cierre de los analistas", async () => {
+    const mk = (decision, verdict) =>
+      prisma.incident.create({
+        data: {
+          source: "wazuh", ruleId: "87105", severity: 12, hostname: "h", agentId: "001", timestamp: new Date().toISOString(),
+          automationPolicy: "Politica de precision", automationDecision: decision,
+          ...(verdict ? { verdict, closedAt: new Date() } : {}),
+        },
+      });
+    await mk("executed", "true_positive");
+    await mk("executed", "true_positive");
+    await mk("executed", "true_positive");
+    await mk("executed", "false_positive");
+    await mk("executed", null); // contenido, todavia abierto
+    await mk("simulated", "benign_positive");
+
+    const stats = (await policyStats())["Politica de precision"];
+
+    expect(stats.executed).toEqual({ total: 5, closed: 4, true_positive: 3, benign_positive: 0, false_positive: 1, precision: 0.75 });
+    expect(stats.simulated).toMatchObject({ total: 1, closed: 1, benign_positive: 1, precision: 0 });
+
+    const view = await request(app).get("/api/v1/automation").set(admin);
+    expect(view.body.policies.every((p) => p.stats && p.stats.executed && p.stats.simulated)).toBe(true);
   });
 });
 

@@ -54,6 +54,7 @@ async function deleteAccount(prisma, username) {
   await prisma.$transaction(async (tx) => {
     await tx.user.deleteMany({ where: { username } });
     await tx.auditEvent.updateMany({ where: { actor: username }, data: { actor: pseudonym } });
+    await tx.incident.updateMany({ where: { closedBy: username }, data: { closedBy: pseudonym } });
     // Eventos anteriores al campo "actor" llevaban el username en el texto
     // ("<username> logged in").
     const legacy = await tx.auditEvent.findMany({ where: { detail: { startsWith: `${username} ` } } });
@@ -64,7 +65,7 @@ async function deleteAccount(prisma, username) {
       });
     }
     await tx.auditEvent.create({
-      data: { type: "account_deleted", detail: "Account deleted (personal data removed)", actor: pseudonym },
+      data: { type: "account_deleted", detail: "Cuenta eliminada (datos personales borrados)", actor: pseudonym },
     });
   });
   return pseudonym;

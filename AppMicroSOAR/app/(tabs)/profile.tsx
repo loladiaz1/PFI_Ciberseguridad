@@ -20,6 +20,7 @@ import { deleteAccount, updateUser } from "@/services/api";
 import { clearToken } from "@/services/tokenStore";
 import Colors from "@/styles/colors";
 import type { UserProfile } from "@/types";
+import { S } from "@/constants/strings";
 
 export default function ProfileScreen() {
   const [user, setUser] = useState<UserProfile | null>(null);
@@ -44,7 +45,7 @@ export default function ProfileScreen() {
           setError("");
         })
         .catch(() => {
-          if (!cancelled) setError("Could not load profile");
+          if (!cancelled) setError(S.profile.loadError);
         })
         .finally(() => {
           if (!cancelled) setLoading(false);
@@ -70,10 +71,10 @@ export default function ProfileScreen() {
   };
 
   const handleLogout = () => {
-    Alert.alert("Log out", "Are you sure you want to log out?", [
-      { text: "Cancel", style: "cancel" },
+    Alert.alert(S.profile.logoutTitle, S.profile.logoutBody, [
+      { text: S.common.cancel, style: "cancel" },
       {
-        text: "Log out",
+        text: S.profile.logout,
         style: "destructive",
         onPress: async () => {
           await clearToken();
@@ -85,12 +86,12 @@ export default function ProfileScreen() {
 
   const handleDeleteAccount = () => {
     Alert.alert(
-      "Delete account",
-      "Your profile (name and email) will be permanently deleted. Security audit records are kept, but anonymized: they will no longer identify you. This cannot be undone.",
+      S.profile.deleteTitle,
+      S.profile.deleteBody,
       [
-        { text: "Cancel", style: "cancel" },
+        { text: S.common.cancel, style: "cancel" },
         {
-          text: "Delete",
+          text: S.profile.delete,
           style: "destructive",
           onPress: async () => {
             try {
@@ -98,7 +99,7 @@ export default function ProfileScreen() {
               await clearToken();
               router.replace("/");
             } catch {
-              Alert.alert("Unable to delete account", "Something went wrong. Try again.");
+              Alert.alert(S.profile.deleteError, S.common.genericError);
             }
           },
         },
@@ -108,7 +109,7 @@ export default function ProfileScreen() {
 
   const saveProfile = async () => {
     if (!name.trim() || !email.trim()) {
-      Alert.alert("Invalid data", "Name and email are required.");
+      Alert.alert(S.profile.invalidData, S.profile.required);
       return;
     }
 
@@ -118,7 +119,7 @@ export default function ProfileScreen() {
       setUser(updated);
       setEditing(false);
     } catch {
-      Alert.alert("Unable to update profile", "Something went wrong.");
+      Alert.alert(S.profile.updateError, S.common.genericError);
     } finally {
       setSaving(false);
     }
@@ -141,7 +142,7 @@ export default function ProfileScreen() {
         <BrandHeader />
         <View style={[styles.centered, styles.emptyState]}>
           <MaterialCommunityIcons name="account-alert-outline" size={48} color={Colors.textSecondary} />
-          <Text style={styles.value}>{error || "No user session"}</Text>
+          <Text style={styles.value}>{error || S.profile.noSession}</Text>
         </View>
       </View>
     );
@@ -150,7 +151,7 @@ export default function ProfileScreen() {
   return (
     <View style={styles.container}>
       <BrandHeader />
-      <Header title="Profile" subtitle="Account details" />
+      <Header title={S.profile.title} subtitle={S.profile.subtitle} />
 
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.avatarWrap}>
@@ -161,10 +162,10 @@ export default function ProfileScreen() {
 
         {editing ? (
           <View style={styles.card}>
-            <Text style={styles.label}>Name</Text>
+            <Text style={styles.label}>{S.fields.name}</Text>
             <TextInput style={styles.input} value={name} onChangeText={setName} />
 
-            <Text style={styles.label}>Email</Text>
+            <Text style={styles.label}>{S.fields.email}</Text>
             <TextInput
               style={styles.input}
               value={email}
@@ -173,59 +174,59 @@ export default function ProfileScreen() {
               keyboardType="email-address"
             />
 
-            <Text style={styles.label}>Role</Text>
-            <Text style={styles.value}>{user.role}</Text>
+            <Text style={styles.label}>{S.fields.role}</Text>
+            <Text style={styles.value}>{S.roles[user.role]}</Text>
 
             <View style={styles.editActions}>
               <TouchableOpacity style={styles.cancelButton} onPress={cancelEditing} disabled={saving}>
-                <Text style={styles.cancelButtonText}>Cancel</Text>
+                <Text style={styles.cancelButtonText}>{S.common.cancel}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.saveButton} onPress={saveProfile} disabled={saving}>
-                <Text style={styles.saveButtonText}>{saving ? "Saving..." : "Save"}</Text>
+                <Text style={styles.saveButtonText}>{saving ? S.common.saving : S.common.save}</Text>
               </TouchableOpacity>
             </View>
           </View>
         ) : (
           <View style={styles.card}>
-            <Text style={styles.label}>Name</Text>
+            <Text style={styles.label}>{S.fields.name}</Text>
             <Text style={styles.value}>{user.name}</Text>
-            <Text style={styles.label}>Email</Text>
+            <Text style={styles.label}>{S.fields.email}</Text>
             <Text style={styles.value}>{user.email}</Text>
-            <Text style={styles.label}>Role</Text>
-            <Text style={styles.value}>{user.role}</Text>
+            <Text style={styles.label}>{S.fields.role}</Text>
+            <Text style={styles.value}>{S.roles[user.role]}</Text>
 
             <TouchableOpacity style={styles.editButton} onPress={startEditing}>
               <MaterialCommunityIcons name="pencil" size={16} color={Colors.primary} />
-              <Text style={styles.editButtonText}>Edit Profile</Text>
+              <Text style={styles.editButtonText}>{S.profile.edit}</Text>
             </TouchableOpacity>
           </View>
         )}
 
         <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
           <MaterialCommunityIcons name="logout" size={18} color={Colors.danger} />
-          <Text style={styles.logoutButtonText}>Log Out</Text>
+          <Text style={styles.logoutButtonText}>{S.profile.logout}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.adminButton} onPress={() => router.push("/automation")}>
           <MaterialCommunityIcons name="robot-outline" size={18} color={Colors.primary} />
-          <Text style={styles.adminButtonText}>Automation</Text>
+          <Text style={styles.adminButtonText}>{S.profile.automation}</Text>
         </TouchableOpacity>
 
         {user.role === "admin" ? (
           <TouchableOpacity style={styles.adminButton} onPress={() => router.push("/users")}>
             <MaterialCommunityIcons name="account-group" size={18} color={Colors.primary} />
-            <Text style={styles.adminButtonText}>Manage users</Text>
+            <Text style={styles.adminButtonText}>{S.profile.manageUsers}</Text>
           </TouchableOpacity>
         ) : null}
 
         <TouchableOpacity style={styles.linkButton} onPress={() => router.push("/privacy")}>
           <MaterialCommunityIcons name="shield-account-outline" size={18} color={Colors.textSecondary} />
-          <Text style={styles.linkButtonText}>Privacy policy</Text>
+          <Text style={styles.linkButtonText}>{S.profile.privacy}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.linkButton} onPress={handleDeleteAccount}>
           <MaterialCommunityIcons name="account-remove-outline" size={18} color={Colors.danger} />
-          <Text style={[styles.linkButtonText, { color: Colors.danger }]}>Delete account</Text>
+          <Text style={[styles.linkButtonText, { color: Colors.danger }]}>{S.profile.deleteTitle}</Text>
         </TouchableOpacity>
       </ScrollView>
     </View>

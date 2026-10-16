@@ -10,6 +10,225 @@
 
 ---
 
+## Entrada 10 — 2026-10-16: Cerrar el caso, poner límites a la automatización, y una app en un solo idioma
+
+### Contexto
+
+Hasta esta sesión, el ciclo de vida de un incidente terminaba en "mitigado":
+no había forma de decir si la alerta era un ataque real, una actividad
+legítima o un error de la detección, ni de buscar casos anteriores. Y la
+automatización, recién implementada, se había diseñado pero nunca revisado
+con ojo crítico. La sesión trabajó las dos cosas, y terminó con la primera
+prueba de la app completa en el celular.
+
+### El veredicto como dato
+
+Cerrar un caso ahora exige un veredicto: verdadero positivo (un ataque real),
+benigno positivo (la detección fue correcta pero la actividad era legítima,
+por ejemplo un escaneo autorizado) o falso positivo (la detección fue
+errónea). Son las mismas tres categorías que usa la industria para el triaje
+y el dataset GUIDE de Microsoft. Se suman etiquetas de un catálogo fijo —las
+del sistema se ponen solas: el caso de uso al crear el incidente y la acción
+al contenerlo— y una nota, obligatoria cuando no hubo ataque real, porque
+descartar una alerta es la decisión que más cuesta si está mal. Por la misma
+razón, cerrar como falso positivo pide verificación biométrica.
+
+Esto tiene un segundo propósito. Un modelo de aprendizaje automático para
+priorizar alertas necesita ejemplos etiquetados, y el proyecto no puede usar
+datos sintéticos. Cada cierre es un ejemplo etiquetado por un analista sobre
+un incidente real, con su contexto completo: la plataforma genera, mientras
+se usa, el dataset que haría falta para entrenarlo.
+
+El veredicto también sirvió enseguida para otra cosa: medir la precisión de
+cada política de automatización. De los casos que una política contuvo, o
+habría contenido en simulación, cuántos terminaron cerrados como ataque real.
+Es la evidencia que un administrador necesita para decidir si activar,
+ajustar o apagar una política.
+
+### Auditar la automatización
+
+La revisión de cómo la automatización usa el contexto encontró que el diseño
+resiste bien —ante un dato faltante no actúa, cada decisión es explicable,
+usa el mismo código que el analista y solo un administrador la configura—,
+pero también cinco debilidades concretas, que se corrigieron.
+
+La más grave era silenciosa: la lista de exclusión solo entendía direcciones
+IPv4. Una IPv6 excluida nunca coincidía, y esa IP se habría bloqueado igual;
+era el único caso en que el sistema fallaba del lado inseguro. Las otras eran
+de gobierno: no había límite al daño que una política mal configurada podía
+hacer, un activo que no figuraba en el inventario se trataba como de
+criticidad media, y la auditoría de un cambio de configuración decía el valor
+nuevo pero no el anterior.
+
+El límite al daño se resolvió con un cortacircuitos: si la automatización
+ejecuta más de cierta cantidad de acciones en una ventana de tiempo (cinco en
+diez minutos por defecto), se pasa sola a modo simulación, lo avisa en la
+app, y el caso queda para el analista. Volver a activarla es una decisión
+explícita de un administrador. Un activo desconocido pasa a considerarse de
+criticidad alta: en una empresa real el inventario nunca está completo, y lo
+que no se conoce no se automatiza. Quedaron identificados como trabajo futuro
+deshacer una acción automática, condiciones basadas en comportamiento, la
+sincronización del inventario con una CMDB o con los grupos de agentes de
+Wazuh, y probar una política contra incidentes pasados antes de activarla.
+
+### Un solo idioma, en un solo lugar
+
+La app mezclaba inglés y español. Se tradujo completa, y en lugar de
+reemplazar textos pantalla por pantalla, todos quedaron en un único archivo,
+organizado por pantalla: agregar otro idioma es escribir una copia de ese
+archivo, sin tocar las pantallas. Los valores internos (estados, roles,
+criticidades) siguen en inglés, de modo que la API y los datos guardados no
+cambiaron. Los mensajes que el servidor muestra en la app —errores, eventos
+de auditoría, motivos de la automatización— también pasaron al español.
+
+### Lo que encontró el celular
+
+La prueba en un dispositivo real mostró problemas que no aparecían en el
+código: el teclado tapaba la nota de cierre (en Android, con la pantalla de
+borde a borde, la ventana ya no se achica sola), las etiquetas se veían
+desparejas, las pantallas de la acción tenían márgenes distintos al resto, no
+se podía copiar una IP para buscarla, y el motivo largo de una decisión
+automática se cortaba. También dejó en evidencia un hueco de trazabilidad:
+cuando Wazuh rechazaba una acción del analista, el intento no quedaba en la
+auditoría. Ahora queda, con quién lo intentó y por qué falló.
+
+### Resultado
+
+El incidente tiene ahora un ciclo de vida completo —detectado, agrupado,
+contenido (por el analista o por una política), cerrado con veredicto, y
+reabierto si aparece información nueva—, la automatización tiene límites
+explícitos y una medida de su propia precisión, y la app habla un solo
+idioma. 155 tests, con 98,9 % de cobertura de líneas.
+
+### Próximo paso
+
+Desplegar estos cambios, medir la contención automática contra la
+infraestructura real para compararla con la manual en las Conclusiones, y
+terminar las correcciones del documento para la entrega del 20/10.
+
+---
+
+## Entrada 9 — 2026-10-14 al 15/10: De la devolución de E50 a una plataforma que decide sola cuando es seguro
+
+### Contexto
+
+La devolución de la entrega E50 aprobó el trabajo, pero marcó como críticas
+tres faltas que eran del producto y no del documento: los requerimientos de
+rendimiento no tenían ningún número ("en el orden de segundos", "dentro del
+SLA definido"), no había forma de eliminar una cuenta, y no se mencionaba la
+Ley 25.326 de protección de datos personales. Estas sesiones resolvieron las
+tres, y en el camino el producto ganó lo que lo distingue de una aplicación
+de botones: decide solo cuando el caso es claro y de bajo riesgo.
+
+### Medir antes de prometer
+
+En lugar de escribir una cota estimada, se instrumentó el sistema para medir
+tres tiempos de cada incidente: de la alerta de Wazuh a que el incidente
+existe, cuánto tarda en ejecutarse la acción, y la contención completa
+(alerta → mitigado, incluida la decisión del analista). Una campaña de
+medición contra la infraestructura real, con el analista operando desde el
+celular, dio una contención mediana de 21,1 segundos y un percentil 95 de
+31,3 segundos, frente a los 8 a 14 minutos del modelo de acceso remoto
+tradicional: entre 23 y 40 veces menos. Con esos datos se propusieron las
+cotas (detección ≤ 5 s, ejecución de la acción ≤ 2 s, contención ≤ 60 s, todas
+en percentil 95), defendibles porque cada una es el valor medido más un
+margen explícito.
+
+El dato más revelador fue otro: el sistema aporta alrededor de 1,5 segundos;
+el 94 % del tiempo de contención es la decisión humana. Si el objetivo es
+contener más rápido, el próximo salto no está en optimizar el sistema sino en
+no esperar al analista cuando no hace falta.
+
+### Privacidad y usuarios reales
+
+La eliminación de la cuenta chocaba con una obligación de seguridad: borrar
+el registro de auditoría haría desaparecer, por ejemplo, el rastro de quién
+aisló un equipo. Se resolvió con seudonimización: el perfil se borra y, en
+cada evento de auditoría, la persona se reemplaza por un seudónimo estable
+que no se puede revertir sin un secreto del servidor. Se agregaron además
+una política de retención (las IPs de los atacantes se enmascaran a su red a
+los 90 días), el aviso de privacidad en la app y el consentimiento en el
+registro.
+
+Eso dejó en evidencia que el sistema tenía un único usuario configurado en el
+servidor, cuando el documento promete control de acceso por roles. Se
+implementaron usuarios reales con contraseña protegida por hash, tres roles
+(administrador, analista y auditor de solo lectura) y registro con
+aprobación: la cuenta nace pendiente y con el rol de menor privilegio, y
+nadie se da acceso a sí mismo. El rol se verifica contra la base en cada
+solicitud, de modo que desactivar a alguien corta su sesión en el acto, y el
+sistema impide quedarse sin administradores.
+
+### Agrupar para triar
+
+La campaña mostró además que cada ataque de fuerza bruta generaba dos
+incidentes, porque Wazuh dispara una regla por el servicio SSH y otra por el
+módulo de autenticación del sistema: el analista mitigaba uno y el otro
+quedaba abierto. Se agrupan ahora las alertas del mismo agente y la misma IP
+de origen mientras el incidente siga abierto y dentro de una ventana de 10
+minutos; un incidente ya mitigado no absorbe alertas nuevas, para que un
+intento posterior a la contención se vea como lo que es.
+
+### Autonomía graduada
+
+La automatización se diseñó para que sea defendible ante un tribunal de
+seguridad, no solo rápida. Un administrador define políticas —por ejemplo,
+"fuerza bruta desde una IP con mala reputación contra un activo no crítico →
+bloquear", o "archivo detectado por diez o más motores de VirusTotal →
+aislar"— combinando la reputación de la IP, el país, la detección del
+archivo y la criticidad del activo afectado, registrada en un inventario.
+Por encima de cualquier política hay reglas fijas: un activo crítico nunca se
+mitiga solo, una IP de la lista de exclusión nunca se bloquea, y un dato
+faltante cuenta como condición no cumplida: ante la duda, no se automatiza.
+El sistema arranca en modo simulación, en el que registra lo que habría hecho
+sin ejecutarlo, y solo un administrador, con verificación biométrica, puede
+activarlo. Toda decisión queda guardada en el incidente con la política que
+la motivó, y en la auditoría con el actor "automation".
+
+Esto cambia un principio del diseño original, que exigía la verificación
+biométrica para toda acción crítica: las acciones automáticas no la tienen,
+pero están gobernadas por una política que un administrador aprobó con esa
+verificación. Es el paso de un humano en el ciclo a un humano sobre el
+ciclo, reservado a los casos de bajo riesgo, y está respaldado por las
+entrevistas: uno de los profesionales consultados señaló explícitamente que
+permitiría acciones de contención inmediata y de bajo riesgo sin aprobación
+previa.
+
+La primera prueba de punta a punta encontró un defecto de diseño: la
+automatización solo decidía al crear un incidente, así que una alerta que se
+sumaba a un incidente abierto —por ejemplo, después de activar el modo
+automático— nunca se contenía. Ahora cada alerta agrupada provoca una nueva
+evaluación.
+
+### Trazabilidad del caso
+
+Agrupar alertas tenía un costo: se perdía la evidencia individual. Cada
+alerta queda ahora registrada con lo que la distingue (el archivo infectado,
+o el usuario que el atacante intentó usar), guardando solo los campos útiles
+y no la alerta completa, por minimización de datos. Los eventos de auditoría
+quedaron vinculados a su incidente y clasificados por categoría. En la app,
+el detalle de cada caso muestra la evidencia y el registro de lo que se hizo,
+con quién y cuándo, y el registro general del sistema se puede filtrar por
+tipo de evento.
+
+### Una lección sobre las pruebas
+
+Varias veces las pruebas automatizadas fallaron por algo ajeno al código: se
+ejecutaban contra la base de datos de desarrollo, que conservaba el estado de
+las pruebas manuales —en un caso, la automatización activada, ejecutando
+acciones en pruebas que no lo esperaban—. Las pruebas usan ahora su propia
+base, creada de cero en cada corrida, igual que en la integración continua.
+La suite pasó de 49 a 130 pruebas, con una cobertura del 98,7 % de las
+líneas.
+
+### Próximo paso
+
+Medir la contención automática para compararla con la manual en las
+Conclusiones, e incorporar al documento las cotas, el modelo de datos y el
+contrato de API reales y los diagramas, de cara a la entrega del 20/10.
+
+---
+
 ## Entrada 8 — 2026-10-06 al 13/10: El pipeline funcionando, el aislamiento real, y 1.320 alertas que nadie había pedido
 
 ### Contexto

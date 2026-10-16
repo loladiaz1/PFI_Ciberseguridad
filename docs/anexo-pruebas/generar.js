@@ -41,6 +41,7 @@ const SUITES = {
   "metrics.test.js": ["Métricas de tiempo de respuesta", "RNF-05", "Cotas de rendimiento calculadas sobre datos inválidos o mezclando incidentes anteriores a la instrumentación."],
   "automation.test.js": ["Automatización según contexto", "CU-01 / CU-02", "Una acción automática sobre un activo crítico o una IP excluida, una política que se dispara con datos faltantes, o un cambio de configuración sin permisos ni auditoría."],
   "timeline.test.js": ["Línea de tiempo y auditoría por incidente", "Trazabilidad", "Evidencia del caso perdida al agrupar alertas, o eventos de auditoría que no se pueden atribuir a su incidente."],
+  "closure.test.js": ["Cierre de casos y filtros", "Triaje", "Un caso cerrado sin justificación, un falso positivo descartado sin control, o un caso cerrado que sigue absorbiendo alertas."],
   "privacy.test.js": ["Protección de datos personales", "Ley 25.326", "Datos personales conservados más de lo necesario, o una baja que borra la trazabilidad de seguridad o no quita el acceso."],
 };
 

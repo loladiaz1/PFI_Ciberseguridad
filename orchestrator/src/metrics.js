@@ -9,6 +9,8 @@
 //     acceso remoto tradicional.
 //   - automatedContainment: alerta -> mitigado por la automatizacion
 //     (src/automation.js). Separado para no mezclar los dos regimenes.
+//   - timeToClose: alerta -> caso cerrado por el analista (MTTR, incluye la
+//     investigacion despues de contener).
 // Los relojes del manager y del orquestador se sincronizan con Amazon Time
 // Sync (NTP), asi que la diferencia entre instancias es despreciable frente
 // a los valores medidos (segundos).
@@ -54,6 +56,9 @@ function computeMetrics(incidents) {
         group
           .filter((i) => i.ingestedAt && mitigatedAt(i) && i.automationDecision !== "executed")
           .map((i) => new Date(mitigatedAt(i)).getTime() - alertMs(i))
+      ),
+      timeToClose: summarize(
+        group.filter((i) => i.ingestedAt && i.closedAt).map((i) => new Date(i.closedAt).getTime() - alertMs(i))
       ),
       automatedContainment: summarize(
         group

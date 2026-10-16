@@ -64,4 +64,10 @@ test("devuelve 502 si Wazuh rechaza el comando", async () => {
     .set("Authorization", `Bearer ${token}`);
 
   expect(resp.status).toBe(502);
+
+  // El intento fallido queda auditado, vinculado al incidente.
+  const event = await prisma.auditEvent.findFirst({ where: { type: "mitigation_failed" }, orderBy: { id: "desc" } });
+  expect(event.incidentId).toBe(created.body.id);
+  expect(event.actor).toBeTruthy();
+  expect(event.detail).toMatch(/^Falló el bloqueo de 203.0.113.55 \(incidente #\d+\): El comando fue rechazado$/);
 });

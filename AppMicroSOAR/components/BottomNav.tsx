@@ -3,6 +3,7 @@ import { View, TouchableOpacity, Text, StyleSheet } from "react-native";
 import { router, usePathname, Href } from "expo-router";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import Colors from "../styles/colors";
+import { S } from "@/constants/strings";
 
 type NavItemProps = {
   title: string;
@@ -37,25 +38,25 @@ export default function BottomNav() {
   return (
     <View style={styles.container}>
       <Item
-        title="Home"
+        title={S.tabs.dashboard}
         icon="view-dashboard"
         route="/dashboard"
       />
 
       <Item
-        title="Incidents"
+        title={S.tabs.incidents}
         icon="shield-alert"
         route="/incidents"
       />
 
       <Item
-        title="Activity"
+        title={S.tabs.activity}
         icon="history"
         route="/activity"
       />
 
       <Item
-        title="Profile"
+        title={S.tabs.profile}
         icon="account-circle"
         route="/profile"
       />

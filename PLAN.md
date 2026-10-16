@@ -207,9 +207,15 @@ Detalle completo en `CORRECCIONES para 75%.md`; registro en `progress.md` (sesi�
 - [ ] Programar la retención en la instancia (hoy manual)
 - [x] Agrupamiento de incidentes del mismo ataque (14/10, PR #11)
 - [x] Usuarios reales con roles admin / analyst / auditor y registro con aprobación (RF-13) (14/10, PR #11)
-- [ ] **Automatización según contexto** (políticas configurables por el admin, simulación, exclusiones, interruptor general)
-- [ ] Línea de tiempo de auditoría por incidente
-- [ ] Regenerar el anexo de pruebas antes del 20/10 (93 tests al 14/10)
+- [x] **Automatización según contexto** (políticas configurables por el admin, inventario de activos, simulación, exclusiones, modo off) (14/10, PR #13)
+- [ ] Medir la contención automática (2-3 corridas por caso de uso) para comparar con la manual en las Conclusiones
+- [x] Línea de tiempo del incidente (alertas agrupadas con su archivo / usuario + eventos) y auditoría por categorías y por incidente (14/10, PR #14)
+- [x] Cierre de casos con veredicto, etiquetas y nota; reapertura; filtros y búsqueda de incidentes (16/10)
+- [x] Mejoras de la automatización: IPv6 en la lista de exclusión, cortacircuitos, activos desconocidos = criticidad alta, auditoría antes → después, precisión por política (16/10)
+- [x] App en español con todos los textos en un único archivo (`constants/strings.ts`); mitigación fallida auditada (16/10)
+- [ ] En producción, después del deploy: criticidad por defecto "alta" desde Automatización (la base existente conserva "media")
+- [ ] Modelo de datos y contrato de API del documento generados desde el sistema real (incluye las tablas y endpoints nuevos: usuarios, automatización, activos, alertas)
+- [ ] Regenerar el anexo de pruebas antes del 20/10 (155 tests al 16/10; el PDF actual muestra 49)
 - [ ] Modelo de datos y contrato de API del documento = sistema real (no "versión objetivo")
 - [ ] Diagramas vectoriales (arquitectura, flujos, secuencia, entidad-relación) — **crítica**
 - [ ] Los 11 RNF redactados como "El sistema debe..." (junto con las cotas)

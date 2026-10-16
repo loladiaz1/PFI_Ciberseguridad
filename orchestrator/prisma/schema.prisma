@@ -38,6 +38,14 @@ model Incident {
   automationDecision String?
   automationPolicy   String?
   automationReason   String?
+  // Cierre del caso (src/closure.js). "Contenido" (status blocked/isolated) y
+  // "cerrado" son independientes: un caso puede estar contenido y abierto
+  // (en investigacion) o cerrado sin contener (falso positivo).
+  closedAt           DateTime?
+  closedBy           String?
+  verdict            String? // true_positive | benign_positive | false_positive
+  closingNote        String?
+  tags               String   @default("[]") // JSON, claves del catalogo fijo
   enrichmentVt        String?
   enrichmentAbuseIpdb String?
   alerts              IncidentAlert[]
@@ -87,7 +95,13 @@ model AutomationSettings {
   id                 Int      @id @default(1)
   mode               String   @default("simulate") // off | simulate | active
   allowlist          String   @default("[]") // JSON: IPs / CIDR que nunca se bloquean
-  defaultCriticality String   @default("medium") // para agentes fuera del inventario
+  // Para agentes fuera del inventario. "high" por defecto: no se automatiza
+  // sobre lo que no se conoce.
+  defaultCriticality String   @default("high")
+  // Cortacircuitos: si la automatizacion ejecuta maxActions acciones dentro
+  // de windowMinutes, se pasa sola a simulacion y avisa.
+  maxActions         Int      @default(5)
+  windowMinutes      Int      @default(10)
   updatedAt          DateTime @updatedAt
   updatedBy          String?
 

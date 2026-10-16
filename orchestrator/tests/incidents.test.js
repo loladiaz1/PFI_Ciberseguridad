@@ -48,7 +48,7 @@ test("un token adulterado o vencido -> 401", async () => {
   const resp = await request(app).get("/api/v1/incidents").set("Authorization", "Bearer no.es.un-jwt");
 
   expect(resp.status).toBe(401);
-  expect(resp.body.detail).toBe("Invalid or expired token");
+  expect(resp.body.detail).toBe("Token inválido o vencido");
 });
 
 test("el webhook guarda el enriquecimiento cuando VT/AbuseIPDB responden", async () => {

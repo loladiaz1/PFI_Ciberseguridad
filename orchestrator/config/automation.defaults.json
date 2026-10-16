@@ -2,9 +2,15 @@
   "_comment": "Valores INICIALES de la automatizacion (src/automation.js). Se cargan en la base solo la primera vez (si no existen); despues los edita un admin desde la app y esos cambios mandan. Cambiar este archivo no pisa la configuracion ya cargada.",
   "mode": "simulate",
   "allowlist": [],
-  "defaultCriticality": "medium",
+  "defaultCriticality": "high",
+  "maxActions": 5,
+  "windowMinutes": 10,
   "assets": [
-    { "agentId": "001", "name": "victima-laboratorio", "criticality": "low" }
+    {
+      "agentId": "001",
+      "name": "victima-laboratorio",
+      "criticality": "low"
+    }
   ],
   "policies": [
     {
@@ -14,7 +20,11 @@
       "enabled": true,
       "useCase": "CU-01",
       "action": "block-ip",
-      "conditions": { "minSeverity": 10, "minAbuseScore": 80, "maxAssetCriticality": "medium" }
+      "conditions": {
+        "minSeverity": 10,
+        "minAbuseScore": 80,
+        "maxAssetCriticality": "medium"
+      }
     },
     {
       "key": "fuerza-bruta-pais-alto-riesgo",
@@ -23,7 +33,16 @@
       "enabled": false,
       "useCase": "CU-01",
       "action": "block-ip",
-      "conditions": { "minSeverity": 10, "fromCountries": ["CN", "RU", "KP", "IR"], "maxAssetCriticality": "low" }
+      "conditions": {
+        "minSeverity": 10,
+        "fromCountries": [
+          "CN",
+          "RU",
+          "KP",
+          "IR"
+        ],
+        "maxAssetCriticality": "low"
+      }
     },
     {
       "key": "fuerza-bruta-laboratorio",
@@ -32,7 +51,10 @@
       "enabled": false,
       "useCase": "CU-01",
       "action": "block-ip",
-      "conditions": { "minSeverity": 10, "maxAssetCriticality": "low" }
+      "conditions": {
+        "minSeverity": 10,
+        "maxAssetCriticality": "low"
+      }
     },
     {
       "key": "malware-confirmado",
@@ -41,7 +63,10 @@
       "enabled": true,
       "useCase": "CU-02",
       "action": "isolate-host",
-      "conditions": { "minHashPositives": 10, "maxAssetCriticality": "medium" }
+      "conditions": {
+        "minHashPositives": 10,
+        "maxAssetCriticality": "medium"
+      }
     }
   ]
 }

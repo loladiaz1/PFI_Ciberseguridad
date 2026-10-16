@@ -28,6 +28,32 @@ export interface Incident {
   automationDecision: 'none' | 'simulated' | 'executed' | 'failed' | null;
   automationPolicy: string | null;
   automationReason: string | null;
+  // Cierre del caso (orchestrator/src/closure.js).
+  closedAt: string | null;
+  closedBy: string | null;
+  verdict: Verdict | null;
+  closingNote: string | null;
+  tags: string; // JSON con claves del catalogo
+}
+
+export type Verdict = 'true_positive' | 'benign_positive' | 'false_positive';
+
+export interface ClosureCatalog {
+  verdicts: Verdict[];
+  noteRequired: Verdict[];
+  minNoteLength: number;
+  tags: Record<string, string>; // clave -> texto
+}
+
+export interface IncidentFilters {
+  status?: 'open' | 'closed';
+  contained?: 'yes' | 'no' | 'auto';
+  verdict?: Verdict;
+  tag?: string;
+  useCase?: 'CU-01' | 'CU-02';
+  minSeverity?: number;
+  q?: string;
+  sort?: 'recent' | 'severity';
 }
 
 export type AuditCategory = 'access' | 'users' | 'incidents' | 'response' | 'automation' | 'other';
@@ -80,6 +106,17 @@ export interface AutomationPolicy {
   useCase: 'CU-01' | 'CU-02';
   action: 'block-ip' | 'isolate-host';
   conditions: PolicyConditions;
+  // Precision medida con los veredictos de cierre (orchestrator: policyStats).
+  stats: { executed: PolicyCounts; simulated: PolicyCounts };
+}
+
+export interface PolicyCounts {
+  total: number;
+  closed: number;
+  true_positive: number;
+  benign_positive: number;
+  false_positive: number;
+  precision: number | null;
 }
 
 export interface Asset {
@@ -89,7 +126,16 @@ export interface Asset {
 }
 
 export interface AutomationConfig {
-  settings: { mode: AutomationMode; allowlist: string[]; defaultCriticality: Criticality; updatedBy: string | null; updatedAt: string };
+  settings: {
+    mode: AutomationMode;
+    allowlist: string[];
+    defaultCriticality: Criticality;
+    // Cortacircuitos: maximo de acciones automaticas por ventana.
+    maxActions: number;
+    windowMinutes: number;
+    updatedBy: string | null;
+    updatedAt: string;
+  };
   policies: AutomationPolicy[];
   assets: Asset[];
 }

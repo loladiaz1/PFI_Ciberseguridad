@@ -1,10 +1,11 @@
 import { http } from './http';
 import { saveToken } from './tokenStore';
 import type { UserProfile } from '../types';
+import { S } from '../constants/strings';
 
 export const signIn = async (username: string, password: string) => {
   if (!username || !password) {
-    throw new Error('Username and password are required');
+    throw new Error(S.register.incompleteBody);
   }
 
   const { data } = await http.post<{ token: string }>('/api/v1/auth/login', { username, password });
@@ -17,7 +18,7 @@ export const signIn = async (username: string, password: string) => {
 // activa. El email es tambien el nombre de usuario para el login.
 export const signUp = async (name: string, email: string, password: string) => {
   if (!name || !email || !password) {
-    throw new Error('Please complete all fields');
+    throw new Error(S.register.incompleteBody);
   }
 
   const { data } = await http.post<{ username: string; status: string }>('/api/v1/auth/register', {
