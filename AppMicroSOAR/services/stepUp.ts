@@ -1,5 +1,6 @@
 import { Alert } from 'react-native';
 import * as LocalAuthentication from 'expo-local-authentication';
+import { S } from "@/constants/strings";
 
 // Step-up biometrico para acciones privilegiadas (gestion de usuarios, y a
 // futuro la configuracion de la automatizacion). La validacion la hace el
@@ -10,10 +11,7 @@ export async function confirmWithBiometrics(promptMessage: string): Promise<bool
   const isEnrolled = await LocalAuthentication.isEnrolledAsync();
 
   if (!hasHardware || !isEnrolled) {
-    Alert.alert(
-      'Biometrics required',
-      'No biometrics enrolled on this device. Set up Face ID / Fingerprint to continue.'
-    );
+    Alert.alert(S.biometrics.requiredTitle, S.biometrics.notEnrolled);
     return false;
   }
 

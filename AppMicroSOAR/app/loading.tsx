@@ -6,6 +6,7 @@ import BottomNav from "../components/BottomNav";
 import { BrandHeader } from "../components/ui/BrandHeader";
 import { blockIncidentIp, isolateIncidentHost } from "../services/api";
 import type { MitigationAction } from "../types";
+import { S } from "@/constants/strings";
 
 // Solo cosmetico -- va revelando un mensaje a la vez mientras se espera la
 // respuesta real de la API. No determina cuando navega: eso lo decide
@@ -25,8 +26,8 @@ const [error, setError] = useState("");
 const [visibleStep, setVisibleStep] = useState(0);
 
 const steps = isIsolate
-    ? ["Connecting to Wazuh...", `Isolating ${hostname}...`, "Cutting network access..."]
-    : ["Connecting to Wazuh...", `Blocking ${srcIp}...`, "Updating firewall..."];
+    ? [S.mitigation.connecting, S.mitigation.isolating(hostname), S.mitigation.cutting]
+    : [S.mitigation.connecting, S.mitigation.blocking(srcIp), S.mitigation.updatingFirewall];
 
 useEffect(() => {
     if (visibleStep >= steps.length - 1) return;
@@ -52,7 +53,7 @@ mitigate(Number(id))
         });
     })
     .catch(() => {
-        setError(`Wazuh rejected the ${isIsolate ? "isolation" : "block"} command. Try again.`);
+        setError(S.mitigation.rejected(isIsolate));
     });
 
 // eslint-disable-next-line react-hooks/exhaustive-deps -- solo se ejecuta una vez, al montar
@@ -62,13 +63,13 @@ return(
 
 <View style={styles.container}>
 
-<BrandHeader logoSize={96} />
+<BrandHeader />
 
 <View style={styles.content}>
 
 {error ? (
     <>
-        <Text style={styles.title}>Mitigation failed</Text>
+        <Text style={styles.title}>{S.mitigation.failed}</Text>
         <Text style={styles.text}>{error}</Text>
     </>
 ) : (
@@ -76,7 +77,7 @@ return(
         <ActivityIndicator size="large" color={Colors.primary} style={styles.spinner} />
 
         <Text style={styles.title}>
-        Executing Mitigation...
+        {S.mitigation.executing}
         </Text>
 
         <View style={styles.stepWrap}>
@@ -99,7 +100,8 @@ const styles=StyleSheet.create({
 
 container:{
 flex:1,
-backgroundColor:Colors.background
+backgroundColor:Colors.background,
+paddingTop:60
 },
 
 content:{

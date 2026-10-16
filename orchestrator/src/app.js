@@ -19,6 +19,7 @@ const {
 const { computeMetrics } = require("./metrics");
 const { deleteAccount } = require("./privacy");
 const { findOpenIncident, mergeAlert } = require("./grouping");
+const { VERDICTS, VERDICT_LABELS, TAGS, NOTE_REQUIRED, MIN_NOTE_LENGTH, USE_CASE_TAG, tagsOf, mergeTags, validateClosure } = require("./closure");
 const { CATEGORIES, categoryOf, logAudit, backfillIncidentIds } = require("./audit");
 const { mitigate } = require("./mitigation");
 const {
@@ -26,6 +27,7 @@ const {
   CRITICALITIES,
   ensureAutomationDefaults,
   getAutomationConfig,
+  isValidAllowlistEntry,
   runAutomation,
 } = require("./automation");
 
@@ -42,7 +44,7 @@ const loginLimiter = rateLimit({
   max: 20,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { detail: "Too many login attempts, try again later" },
+  message: { detail: "Demasiados intentos de inicio de sesión, intentá más tarde" },
 });
 
 app.post("/api/v1/auth/login", loginLimiter, async (req, res) => {
@@ -50,16 +52,16 @@ app.post("/api/v1/auth/login", loginLimiter, async (req, res) => {
   const { user, error } = await authenticateUser(username, password);
 
   if (error === "pending") {
-    return res.status(403).json({ detail: "Account pending approval by an administrator" });
+    return res.status(403).json({ detail: "La cuenta está pendiente de aprobación por un administrador" });
   }
   if (error === "disabled") {
-    return res.status(403).json({ detail: "Account disabled" });
+    return res.status(403).json({ detail: "La cuenta está desactivada" });
   }
   if (error) {
-    return res.status(401).json({ detail: "Invalid credentials" });
+    return res.status(401).json({ detail: "Usuario o contraseña incorrectos" });
   }
 
-  await logAudit("login", "Logged in", user.username);
+  await logAudit("login", "Inicio de sesión", user.username);
   res.status(200).json({ token: issueToken(user) });
 });
 
@@ -71,7 +73,7 @@ const registerLimiter = rateLimit({
   max: 10,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { detail: "Too many registration attempts, try again later" },
+  message: { detail: "Demasiados intentos de registro, intentá más tarde" },
 });
 
 app.post("/api/v1/auth/register", registerLimiter, async (req, res) => {
@@ -80,16 +82,16 @@ app.post("/api/v1/auth/register", registerLimiter, async (req, res) => {
     return res.status(422).json({ detail: "username, name, email y password son obligatorios" });
   }
   if (!validatePassword(password)) {
-    return res.status(422).json({ detail: "Password too weak" });
+    return res.status(422).json({ detail: "La contraseña es demasiado débil" });
   }
   if (await prisma.user.findUnique({ where: { username } })) {
-    return res.status(409).json({ detail: "Username already registered" });
+    return res.status(409).json({ detail: "Ese usuario ya está registrado" });
   }
 
   const user = await prisma.user.create({
     data: { username, name, email, role: "analyst", status: "pending", passwordHash: await hashPassword(password) },
   });
-  await logAudit("user_registered", "Registered, pending approval", username);
+  await logAudit("user_registered", "Registro, pendiente de aprobación", username);
   res.status(201).json({ username: user.username, status: user.status });
 });
 
@@ -133,7 +135,7 @@ app.post("/api/v1/webhook/wazuh", async (req, res) => {
       data: mergeAlert(open, fields, now),
     });
     await prisma.incidentAlert.create({ data: alertRecord(grouped.id, fields, req.body) });
-    await logAudit("alert_grouped", `Rule ${fields.ruleId} added to incident #${grouped.id}`, null, grouped.id);
+    await logAudit("alert_grouped", `Regla ${fields.ruleId} sumada al incidente #${grouped.id}`, null, grouped.id);
     // Una alerta nueva es informacion nueva (severidad, hash, o el modo /
     // las politicas pudieron cambiar desde la primera): se vuelve a evaluar.
     // Si el incidente ya se mitigo, runAutomation no hace nada.
@@ -143,13 +145,19 @@ app.post("/api/v1/webhook/wazuh", async (req, res) => {
   }
 
   const incident = await prisma.incident.create({
-    data: { ...fields, ingestedAt: now, lastSeenAt: now, ruleIds: JSON.stringify([fields.ruleId]) },
+    data: {
+      ...fields,
+      ingestedAt: now,
+      lastSeenAt: now,
+      ruleIds: JSON.stringify([fields.ruleId]),
+      tags: mergeTags([], [USE_CASE_TAG[fields.srcIp ? "CU-01" : "CU-02"]]),
+    },
   });
   await prisma.incidentAlert.create({ data: alertRecord(incident.id, fields, req.body) });
-  const ruleLabel = fields.ruleDescription ?? `Rule ${fields.ruleId}`;
+  const ruleLabel = fields.ruleDescription ?? `Regla ${fields.ruleId}`;
   await logAudit(
     "incident_detected",
-    fields.srcIp ? `${ruleLabel} from ${fields.srcIp}` : `${ruleLabel} on ${fields.hostname}`,
+    fields.srcIp ? `${ruleLabel} desde ${fields.srcIp}` : `${ruleLabel} en ${fields.hostname}`,
     null,
     incident.id
   );
@@ -194,14 +202,14 @@ app.get("/api/v1/me", requireAuth, async (req, res) => {
 app.put("/api/v1/me", requireAuth, async (req, res) => {
   const { name, email } = req.body || {};
   if (!name || !email) {
-    return res.status(422).json({ detail: "name and email son obligatorios" });
+    return res.status(422).json({ detail: "name y email son obligatorios" });
   }
 
   const user = await prisma.user.update({ where: { username: req.user.sub }, data: { name, email } });
   res.json(publicUser(user));
 });
 
-const LAST_ADMIN = { detail: "Cannot remove the last active administrator" };
+const LAST_ADMIN = { detail: "No se puede quitar al último administrador activo" };
 
 // Derecho de supresion (Ley 25.326, art. 16): borra el usuario (y con el su
 // acceso) y seudonimiza el rastro de auditoria.
@@ -235,7 +243,7 @@ app.patch("/api/v1/users/:username", requireAuth, requireRole("admin"), async (r
   }
 
   const target = await prisma.user.findUnique({ where: { username } });
-  if (!target) return res.status(404).json({ detail: "User not found" });
+  if (!target) return res.status(404).json({ detail: "Usuario no encontrado" });
 
   const losesAdmin = (role !== undefined && role !== "admin") || status === "disabled";
   if (losesAdmin && (await isLastActiveAdmin(username))) return res.status(409).json(LAST_ADMIN);
@@ -246,10 +254,10 @@ app.patch("/api/v1/users/:username", requireAuth, requireRole("admin"), async (r
   const updated = await prisma.user.update({ where: { username }, data });
 
   const changes = [];
-  if (status === "active" && target.status === "pending") changes.push("approved");
-  else if (status !== undefined && status !== target.status) changes.push(`status ${target.status} -> ${status}`);
-  if (role !== undefined && role !== target.role) changes.push(`role ${target.role} -> ${role}`);
-  await logAudit("user_updated", `User ${username}: ${changes.join(", ") || "no changes"}`, req.user.sub);
+  if (status === "active" && target.status === "pending") changes.push("aprobado");
+  else if (status !== undefined && status !== target.status) changes.push(`estado ${target.status} -> ${status}`);
+  if (role !== undefined && role !== target.role) changes.push(`rol ${target.role} -> ${role}`);
+  await logAudit("user_updated", `Usuario ${username}: ${changes.join(", ") || "sin cambios"}`, req.user.sub);
 
   res.json(publicUser(updated));
 });
@@ -259,24 +267,122 @@ app.patch("/api/v1/users/:username", requireAuth, requireRole("admin"), async (r
 app.delete("/api/v1/users/:username", requireAuth, requireRole("admin"), async (req, res) => {
   const { username } = req.params;
   if (!(await prisma.user.findUnique({ where: { username } }))) {
-    return res.status(404).json({ detail: "User not found" });
+    return res.status(404).json({ detail: "Usuario no encontrado" });
   }
   if (await isLastActiveAdmin(username)) return res.status(409).json(LAST_ADMIN);
 
   const pseudonym = await deleteAccount(prisma, username);
-  await logAudit("user_removed", `Removed user (${pseudonym})`, req.user.sub);
+  await logAudit("user_removed", `Usuario eliminado (${pseudonym})`, req.user.sub);
   res.status(204).end();
 });
 
-app.get("/api/v1/incidents", requireAuth, async (_req, res) => {
-  const incidents = await prisma.incident.findMany({ orderBy: { id: "desc" } });
+// Lista de incidentes con filtros (todos opcionales y combinables):
+//   status=open|closed           contained=yes|no|auto (auto = por la automatizacion)
+//   verdict=true_positive|...    tag=<clave del catalogo>
+//   useCase=CU-01|CU-02          minSeverity=<0-15>
+//   q=<texto>  (#12 o 12 = numero de incidente; si no, busca en host e IP)
+//   sort=recent (default) | severity
+const INCIDENT_FILTERS = {
+  status: ["open", "closed"],
+  contained: ["yes", "no", "auto"],
+  verdict: VERDICTS,
+  useCase: ["CU-01", "CU-02"],
+  sort: ["recent", "severity"],
+};
+
+app.get("/api/v1/incidents", requireAuth, async (req, res) => {
+  const { status, contained, verdict, tag, useCase, minSeverity, q, sort } = req.query;
+  for (const [key, allowed] of Object.entries(INCIDENT_FILTERS)) {
+    if (req.query[key] !== undefined && !allowed.includes(req.query[key])) {
+      return res.status(422).json({ detail: `${key} debe ser uno de: ${allowed.join(", ")}` });
+    }
+  }
+  if (tag !== undefined && !TAGS[tag]) return res.status(422).json({ detail: "tag fuera del catalogo" });
+
+  const and = [];
+  if (status === "open") and.push({ closedAt: null });
+  if (status === "closed") and.push({ closedAt: { not: null } });
+  if (contained === "yes") and.push({ status: { in: ["blocked", "isolated"] } });
+  if (contained === "no") and.push({ status: "new" });
+  if (contained === "auto") and.push({ automationDecision: "executed" });
+  if (verdict) and.push({ verdict });
+  if (useCase === "CU-01") and.push({ srcIp: { not: null } });
+  if (useCase === "CU-02") and.push({ srcIp: null });
+  if (minSeverity !== undefined) and.push({ severity: { gte: Number(minSeverity) || 0 } });
+  // tags es JSON ("[\"brute_force\",...]"): se busca la clave entre comillas.
+  if (tag) and.push({ tags: { contains: `"${tag}"` } });
+  if (q && q.trim()) {
+    const text = q.trim().replace(/^#/, "");
+    and.push(/^\d+$/.test(text) ? { id: Number(text) } : { OR: [{ hostname: { contains: text } }, { srcIp: { contains: text } }] });
+  }
+
+  const incidents = await prisma.incident.findMany({
+    where: and.length ? { AND: and } : {},
+    orderBy: sort === "severity" ? [{ severity: "desc" }, { id: "desc" }] : { id: "desc" },
+  });
   res.json(incidents);
+});
+
+// Catalogo de cierre: veredictos y etiquetas (fuente unica para la app).
+app.get("/api/v1/closure-catalog", requireAuth, (_req, res) => {
+  res.json({ verdicts: VERDICTS, noteRequired: NOTE_REQUIRED, minNoteLength: MIN_NOTE_LENGTH, tags: TAGS });
+});
+
+// Cerrar un caso: veredicto + etiquetas + nota (obligatoria para benigno y
+// falso positivo). El step-up para "falso positivo" lo pide la app (la
+// biometria es local al dispositivo); el backend valida rol y datos y audita.
+app.post("/api/v1/incidents/:id/close", requireAuth, requireRole("admin", "analyst"), async (req, res) => {
+  const incident = await prisma.incident.findUnique({ where: { id: Number(req.params.id) } });
+  if (!incident) return res.status(404).json({ detail: "Incidente no encontrado" });
+  if (incident.closedAt) return res.status(409).json({ detail: "El incidente ya está cerrado" });
+
+  const { verdict, tags = [], note } = req.body || {};
+  const invalid = validateClosure({ verdict, tags, note });
+  if (invalid) return res.status(422).json({ detail: invalid });
+
+  const updated = await prisma.incident.update({
+    where: { id: incident.id },
+    data: {
+      closedAt: new Date(),
+      closedBy: req.user.sub,
+      verdict,
+      closingNote: note?.trim() || null,
+      tags: mergeTags(tagsOf(incident), tags),
+    },
+  });
+  await logAudit("incident_closed", `Cierre del incidente #${incident.id} como ${VERDICT_LABELS[verdict]}`, req.user.sub, incident.id);
+  res.json(updated);
+});
+
+// Reabrir: informacion nueva despues del cierre. Nota obligatoria; el
+// veredicto anterior queda en la auditoria.
+app.post("/api/v1/incidents/:id/reopen", requireAuth, requireRole("admin", "analyst"), async (req, res) => {
+  const incident = await prisma.incident.findUnique({ where: { id: Number(req.params.id) } });
+  if (!incident) return res.status(404).json({ detail: "Incidente no encontrado" });
+  if (!incident.closedAt) return res.status(409).json({ detail: "El incidente no está cerrado" });
+
+  const { note } = req.body || {};
+  if (typeof note !== "string" || note.trim().length < MIN_NOTE_LENGTH) {
+    return res.status(422).json({ detail: `Una nota de al menos ${MIN_NOTE_LENGTH} caracteres es obligatoria para reabrir` });
+  }
+
+  const updated = await prisma.incident.update({
+    where: { id: incident.id },
+    data: { closedAt: null, closedBy: null, verdict: null, closingNote: null },
+  });
+  await logAudit(
+    "incident_reopened",
+    `Reapertura del incidente #${incident.id} (era ${VERDICT_LABELS[incident.verdict]}): ${note.trim()}`,
+    req.user.sub,
+    incident.id
+  );
+  res.json(updated);
 });
 
 app.get("/api/v1/incidents/:id", requireAuth, async (req, res) => {
   const incident = await prisma.incident.findUnique({ where: { id: Number(req.params.id) } });
   if (!incident) {
-    return res.status(404).json({ detail: "Incident not found" });
+    return res.status(404).json({ detail: "Incidente no encontrado" });
   }
   res.json(incident);
 });
@@ -287,7 +393,7 @@ app.get("/api/v1/incidents/:id", requireAuth, async (req, res) => {
 async function manualAction(req, res, actionName) {
   const incident = await prisma.incident.findUnique({ where: { id: Number(req.params.id) } });
   if (!incident) {
-    return res.status(404).json({ detail: "Incident not found" });
+    return res.status(404).json({ detail: "Incidente no encontrado" });
   }
   if (actionName === "block-ip" && !incident.srcIp) {
     return res.status(422).json({ detail: "Este incidente no tiene IP de origen para bloquear" });
@@ -297,6 +403,10 @@ async function manualAction(req, res, actionName) {
   try {
     updated = await mitigate(incident, actionName, req.user.sub);
   } catch (err) {
+    // El intento fallido tambien queda en la auditoria: quien lo hizo, sobre
+    // que incidente y por que lo rechazo Wazuh.
+    const target = actionName === "block-ip" ? `el bloqueo de ${incident.srcIp}` : `el aislamiento de ${incident.hostname}`;
+    await logAudit("mitigation_failed", `Falló ${target} (incidente #${incident.id}): ${err.message}`, req.user.sub, incident.id);
     return res.status(502).json({ detail: err.message });
   }
 
@@ -327,22 +437,49 @@ app.get("/api/v1/automation", requireAuth, async (_req, res) => {
 });
 
 app.put("/api/v1/automation/settings", requireAuth, requireRole("admin"), async (req, res) => {
-  const { mode, allowlist } = req.body || {};
+  const { mode, allowlist, defaultCriticality, maxActions, windowMinutes } = req.body || {};
   if (mode !== undefined && !MODES.includes(mode)) {
     return res.status(422).json({ detail: `mode debe ser uno de: ${MODES.join(", ")}` });
   }
   if (allowlist !== undefined && (!Array.isArray(allowlist) || allowlist.some((e) => typeof e !== "string"))) {
     return res.status(422).json({ detail: "allowlist debe ser una lista de IPs o CIDR" });
   }
+  const entries = allowlist === undefined ? undefined : allowlist.map((e) => e.trim()).filter(Boolean);
+  const invalid = entries?.filter((e) => !isValidAllowlistEntry(e)) ?? [];
+  if (invalid.length) {
+    return res.status(422).json({ detail: `Entradas invalidas en la allowlist: ${invalid.join(", ")}` });
+  }
+  if (defaultCriticality !== undefined && !CRITICALITIES.includes(defaultCriticality)) {
+    return res.status(422).json({ detail: `defaultCriticality debe ser una de: ${CRITICALITIES.join(", ")}` });
+  }
+  const intIn = (v, min, max) => v === undefined || (Number.isInteger(v) && v >= min && v <= max);
+  if (!intIn(maxActions, 1, 1000) || !intIn(windowMinutes, 1, 1440)) {
+    return res.status(422).json({ detail: "maxActions debe ser 1-1000 y windowMinutes 1-1440 (enteros)" });
+  }
 
   await ensureAutomationDefaults();
+  const before = await prisma.automationSettings.findUnique({ where: { id: 1 } });
   const data = { updatedBy: req.user.sub };
   if (mode !== undefined) data.mode = mode;
-  if (allowlist !== undefined) data.allowlist = JSON.stringify(allowlist.map((e) => e.trim()).filter(Boolean));
+  if (entries !== undefined) data.allowlist = JSON.stringify(entries);
+  if (defaultCriticality !== undefined) data.defaultCriticality = defaultCriticality;
+  if (maxActions !== undefined) data.maxActions = maxActions;
+  if (windowMinutes !== undefined) data.windowMinutes = windowMinutes;
   await prisma.automationSettings.update({ where: { id: 1 }, data });
 
-  const changes = [mode !== undefined && `mode -> ${mode}`, allowlist !== undefined && `allowlist (${allowlist.length})`];
-  await logAudit("automation_updated", `Settings: ${changes.filter(Boolean).join(", ") || "no changes"}`, req.user.sub);
+  // Auditoria con el valor anterior y el nuevo de cada campo que cambio.
+  const changes = [];
+  const diff = (label, from, to) => {
+    if (to !== undefined && String(from) !== String(to)) changes.push(`${label} ${from} -> ${to}`);
+  };
+  diff("mode", before.mode, mode);
+  diff("defaultCriticality", before.defaultCriticality, defaultCriticality);
+  diff("maxActions", before.maxActions, maxActions);
+  diff("windowMinutes", before.windowMinutes, windowMinutes);
+  if (entries !== undefined && before.allowlist !== JSON.stringify(entries)) {
+    changes.push(`allowlist ${before.allowlist} -> ${JSON.stringify(entries)}`);
+  }
+  await logAudit("automation_updated", `Ajustes: ${changes.join(", ") || "sin cambios"}`, req.user.sub);
   res.json(await getAutomationConfig());
 });
 
@@ -351,7 +488,7 @@ const CONDITION_KEYS = ["minSeverity", "minAbuseScore", "minVtMalicious", "minHa
 app.put("/api/v1/automation/policies/:id", requireAuth, requireRole("admin"), async (req, res) => {
   const { enabled, conditions } = req.body || {};
   const policy = await prisma.automationPolicy.findUnique({ where: { id: Number(req.params.id) } });
-  if (!policy) return res.status(404).json({ detail: "Policy not found" });
+  if (!policy) return res.status(404).json({ detail: "Política no encontrada" });
 
   if (enabled !== undefined && typeof enabled !== "boolean") {
     return res.status(422).json({ detail: "enabled debe ser true o false" });
@@ -372,11 +509,12 @@ app.put("/api/v1/automation/policies/:id", requireAuth, requireRole("admin"), as
   if (conditions !== undefined) data.conditions = JSON.stringify(conditions);
   await prisma.automationPolicy.update({ where: { id: policy.id }, data });
 
-  const changes = [
-    enabled !== undefined && (enabled ? "enabled" : "disabled"),
-    conditions !== undefined && `conditions ${JSON.stringify(conditions)}`,
-  ];
-  await logAudit("automation_updated", `Policy "${policy.name}": ${changes.filter(Boolean).join(", ") || "no changes"}`, req.user.sub);
+  const changes = [];
+  if (enabled !== undefined && enabled !== policy.enabled) changes.push(`enabled ${policy.enabled} -> ${enabled}`);
+  if (conditions !== undefined && JSON.stringify(conditions) !== policy.conditions) {
+    changes.push(`conditions ${policy.conditions} -> ${JSON.stringify(conditions)}`);
+  }
+  await logAudit("automation_updated", `Política "${policy.name}": ${changes.join(", ") || "sin cambios"}`, req.user.sub);
   res.json(await getAutomationConfig());
 });
 
@@ -388,12 +526,17 @@ app.put("/api/v1/assets/:agentId", requireAuth, requireRole("admin"), async (req
     return res.status(422).json({ detail: `criticality debe ser una de: ${CRITICALITIES.join(", ")}` });
   }
 
+  const before = await prisma.asset.findUnique({ where: { agentId } });
   const asset = await prisma.asset.upsert({
     where: { agentId },
     update: { criticality, ...(name ? { name } : {}) },
     create: { agentId, name: name || `agent-${agentId}`, criticality },
   });
-  await logAudit("automation_updated", `Asset ${asset.name} (${agentId}): criticality -> ${criticality}`, req.user.sub);
+  await logAudit(
+    "automation_updated",
+    `Activo ${asset.name} (${agentId}): criticidad ${before ? before.criticality : "(nuevo)"} -> ${criticality}`,
+    req.user.sub
+  );
   res.json(asset);
 });
 
@@ -407,6 +550,7 @@ app.get("/api/v1/metrics", requireAuth, async (_req, res) => {
       isolatedAt: true,
       actionLatencyMs: true,
       automationDecision: true,
+      closedAt: true,
     },
   });
   res.json(computeMetrics(incidents));
@@ -439,7 +583,7 @@ app.get("/api/v1/incidents/:id/timeline", requireAuth, async (req, res) => {
     where: { id: Number(req.params.id) },
     include: { alerts: { orderBy: { id: "asc" } } },
   });
-  if (!incident) return res.status(404).json({ detail: "Incident not found" });
+  if (!incident) return res.status(404).json({ detail: "Incidente no encontrado" });
 
   const alerts = incident.alerts.length
     ? incident.alerts

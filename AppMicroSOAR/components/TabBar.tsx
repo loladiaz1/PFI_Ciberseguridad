@@ -3,6 +3,7 @@ import { View, TouchableOpacity, Text, StyleSheet } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import Colors from "@/styles/colors";
+import { S } from "@/constants/strings";
 
 const ICONS: Record<string, keyof typeof MaterialCommunityIcons.glyphMap> = {
   dashboard: "view-dashboard",
@@ -11,12 +12,7 @@ const ICONS: Record<string, keyof typeof MaterialCommunityIcons.glyphMap> = {
   profile: "account-circle",
 };
 
-const LABELS: Record<string, string> = {
-  dashboard: "Home",
-  incidents: "Incidents",
-  activity: "Activity",
-  profile: "Profile",
-};
+const LABELS = S.tabs;
 
 export default function TabBar({ state, navigation }: BottomTabBarProps) {
   return (

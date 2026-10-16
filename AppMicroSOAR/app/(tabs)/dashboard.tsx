@@ -16,6 +16,7 @@ import { getIncidents } from "@/services/api";
 import { severityLabel } from "@/utils/severity";
 import type { Incident } from "@/types";
 import { REFRESH_MS } from "@/constants/refresh";
+import { S } from "@/constants/strings";
 
 export default function Dashboard(){
 
@@ -42,7 +43,9 @@ useFocusEffect(
 );
 
 const recent = incidents.slice(0, 3);
-const openIncidents = incidents.filter((i) => i.status === "new");
+// Abiertos = sin cerrar y sin contener: lo que el analista tiene que atender.
+// (Un falso positivo cerrado nunca se contiene, pero ya no esta abierto.)
+const openIncidents = incidents.filter((i) => !i.closedAt && i.status === "new");
 const openCount = openIncidents.length;
 const mitigatedCount = incidents.filter((i) => i.status === "blocked" || i.status === "isolated").length;
 
@@ -61,25 +64,25 @@ return(
 <BrandHeader />
 
 <Text style={styles.greeting}>
-Good Evening
+{S.dashboard.greeting}
 </Text>
 
 <Text style={styles.name}>
-SOC Analyst
+{S.dashboard.role}
 </Text>
 
 <View style={[styles.threatCard, threatLevel && { backgroundColor: threatLevel.color }]}>
 
 <Text style={styles.threatTitle}>
-Threat Level
+{S.dashboard.threatLevel}
 </Text>
 
 <Text style={styles.threat}>
-{threatLevel ? threatLevel.label : "CLEAR"}
+{threatLevel ? threatLevel.label : S.dashboard.clear}
 </Text>
 
 <Text style={styles.subtitle}>
-{openCount} open incident{openCount === 1 ? "" : "s"}
+{S.dashboard.openIncidents(openCount)}
 </Text>
 
 </View>
@@ -93,7 +96,7 @@ Threat Level
 </Text>
 
 <Text style={styles.label}>
-Incidents
+{S.dashboard.open}
 </Text>
 
 </View>
@@ -105,7 +108,7 @@ Incidents
 </Text>
 
 <Text style={styles.label}>
-Mitigated
+{S.dashboard.mitigated}
 </Text>
 
 </View>
@@ -115,7 +118,7 @@ Mitigated
 <View style={styles.headerRow}>
 
 <Text style={styles.section}>
-Recent Incidents
+{S.dashboard.recent}
 </Text>
 
 <TouchableOpacity
@@ -123,7 +126,7 @@ onPress={()=>router.push("/incidents")}
 >
 
 <Text style={styles.view}>
-View all
+{S.dashboard.viewAll}
 </Text>
 
 </TouchableOpacity>

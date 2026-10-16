@@ -1,6 +1,7 @@
 const { prisma } = require("./db");
 const { authenticate, blockIp, isolateHost } = require("./wazuh");
 const { logAudit } = require("./audit");
+const { ACTION_TAG, tagsOf, mergeTags } = require("./closure");
 
 // Ejecucion de las acciones de contencion, compartida por el analista
 // (endpoints de app.js) y por la automatizacion (src/automation.js): misma
@@ -9,12 +10,12 @@ const ACTIONS = {
   "block-ip": {
     run: (token, incident) => blockIp(process.env.WAZUH_HOST, token, incident.agentId, incident.srcIp),
     done: () => ({ status: "blocked", blockedAt: new Date() }),
-    audit: (i) => ["ip_blocked", `Blocked ${i.srcIp} (incident #${i.id})`],
+    audit: (i) => ["ip_blocked", `Bloqueo de ${i.srcIp} (incidente #${i.id})`],
   },
   "isolate-host": {
     run: (token, incident) => isolateHost(process.env.WAZUH_HOST, token, incident.agentId),
     done: () => ({ status: "isolated", isolatedAt: new Date() }),
-    audit: (i) => ["host_isolated", `Isolated ${i.hostname} (incident #${i.id})`],
+    audit: (i) => ["host_isolated", `Aislamiento de ${i.hostname} (incidente #${i.id})`],
   },
 };
 
@@ -30,7 +31,12 @@ async function mitigate(incident, actionName, actor, { auditSuffix = "", extraDa
 
   const updated = await prisma.incident.update({
     where: { id: incident.id },
-    data: { ...action.done(), actionLatencyMs: Date.now() - startedAt, ...extraData },
+    data: {
+      ...action.done(),
+      actionLatencyMs: Date.now() - startedAt,
+      tags: mergeTags(tagsOf(incident), [ACTION_TAG[actionName]]),
+      ...extraData,
+    },
   });
   const [type, detail] = action.audit(updated);
   await logAudit(type, detail + auditSuffix, actor, updated.id);

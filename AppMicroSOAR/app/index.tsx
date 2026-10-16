@@ -4,6 +4,7 @@ import { useState } from "react";
 import { isAxiosError } from "axios";
 import Colors from "../styles/colors";
 import { signIn } from "../services/auth";
+import { S } from "@/constants/strings";
 
 export default function LoginScreen() {
   const [username, setUsername] = useState("");
@@ -25,14 +26,14 @@ export default function LoginScreen() {
       router.replace("/dashboard");
     } catch (err) {
       if (isAxiosError(err) && err.response?.status === 429) {
-        setError("Too many attempts. Please wait a few minutes and try again.");
+        setError(S.common.tooManyAttempts);
       } else if (isAxiosError(err) && err.response?.status === 401) {
-        setError("Invalid credentials");
+        setError(S.login.invalidCredentials);
       } else if (isAxiosError(err) && err.response?.status === 403) {
         // Cuenta pendiente de aprobacion o desactivada (mensaje del backend).
-        setError(err.response.data?.detail ?? "Account not active");
+        setError(err.response.data?.detail ?? S.login.accountNotActive);
       } else {
-        setError("Unable to connect to the server");
+        setError(S.common.noConnection);
       }
     } finally {
       setLoading(false);
@@ -51,7 +52,7 @@ export default function LoginScreen() {
           resizeMode="contain"
         />
         <Text style={styles.title}>FORTIA</Text>
-        <Text style={styles.subtitle}>Security Operations Center</Text>
+        <Text style={styles.subtitle}>{S.login.subtitle}</Text>
       </View>
 
       {/* FORMULARIO */}
@@ -59,7 +60,7 @@ export default function LoginScreen() {
       <View style={styles.formSection}>
 
         <TextInput
-          placeholder="Username"
+          placeholder={S.login.username}
           placeholderTextColor={Colors.border}
           style={styles.input}
           value={username}
@@ -69,7 +70,7 @@ export default function LoginScreen() {
 
         <View style={styles.passwordContainer}>
           <TextInput
-            placeholder="Password"
+            placeholder={S.login.password}
             placeholderTextColor={Colors.border}
             secureTextEntry={!showPassword}
             style={styles.passwordInput}
@@ -84,8 +85,8 @@ export default function LoginScreen() {
 
         {hasStartedTyping && (
           <View style={styles.validationBox}>
-            <ValidationRow text="Username entered" valid={usernameValid} visible={username.length > 0} />
-            <ValidationRow text="Password entered" valid={passwordValid} visible={password.length > 0} />
+            <ValidationRow text={S.login.usernameEntered} valid={usernameValid} visible={username.length > 0} />
+            <ValidationRow text={S.login.passwordEntered} valid={passwordValid} visible={password.length > 0} />
           </View>
         )}
 
@@ -96,14 +97,14 @@ export default function LoginScreen() {
           onPress={login}
           disabled={loading}
         >
-          <Text style={styles.loginText}>{loading ? "LOGGING IN..." : "LOGIN"}</Text>
+          <Text style={styles.loginText}>{loading ? S.login.submitting : S.login.submit}</Text>
         </TouchableOpacity>
 
       </View>
 
       <TouchableOpacity onPress={() => router.push("/register")}>
         <Text style={styles.register}>
-          Don&apos;t have an account? Register
+          {S.login.noAccount}
         </Text>
       </TouchableOpacity>
 

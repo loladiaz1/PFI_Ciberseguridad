@@ -84,19 +84,19 @@ async function requireAuth(req, res, next) {
   const [scheme, token] = header.split(" ");
 
   if (scheme !== "Bearer" || !token) {
-    return res.status(401).json({ detail: "Missing bearer token" });
+    return res.status(401).json({ detail: "Falta el token de sesión" });
   }
 
   let payload;
   try {
     payload = jwt.verify(token, process.env.JWT_SECRET);
   } catch (err) {
-    return res.status(401).json({ detail: "Invalid or expired token" });
+    return res.status(401).json({ detail: "Token inválido o vencido" });
   }
 
   const user = await prisma.user.findUnique({ where: { username: payload.sub } });
   if (!user || user.status !== "active") {
-    return res.status(401).json({ detail: "Session no longer valid" });
+    return res.status(401).json({ detail: "La sesión ya no es válida" });
   }
 
   req.user = { sub: user.username, role: user.role };
@@ -106,7 +106,7 @@ async function requireAuth(req, res, next) {
 function requireRole(...roles) {
   return (req, res, next) => {
     if (!roles.includes(req.user.role)) {
-      return res.status(403).json({ detail: "Insufficient permissions" });
+      return res.status(403).json({ detail: "Permisos insuficientes" });
     }
     next();
   };

@@ -3,20 +3,42 @@ import type {
   ActivityItem,
   Asset,
   AuditCategory,
+  ClosureCatalog,
   AutomationConfig,
   AutomationMode,
   Criticality,
   Incident,
+  IncidentFilters,
   PolicyConditions,
   Role,
   TimelineEntry,
   UserProfile,
   UserStatus,
+  Verdict,
 } from '../types';
 
-export const getIncidents = async (): Promise<{ data: Incident[] }> => {
-  const { data } = await http.get<Incident[]>('/api/v1/incidents');
+// Filtros opcionales y combinables (los aplica el backend).
+export const getIncidents = async (filters: IncidentFilters = {}): Promise<{ data: Incident[] }> => {
+  const { data } = await http.get<Incident[]>('/api/v1/incidents', { params: filters });
   return { data };
+};
+
+export const getClosureCatalog = async (): Promise<ClosureCatalog> => {
+  const { data } = await http.get<ClosureCatalog>('/api/v1/closure-catalog');
+  return data;
+};
+
+export const closeIncident = async (
+  id: number,
+  closure: { verdict: Verdict; tags: string[]; note?: string }
+): Promise<Incident> => {
+  const { data } = await http.post<Incident>(`/api/v1/incidents/${id}/close`, closure);
+  return data;
+};
+
+export const reopenIncident = async (id: number, note: string): Promise<Incident> => {
+  const { data } = await http.post<Incident>(`/api/v1/incidents/${id}/reopen`, { note });
+  return data;
 };
 
 export const getIncidentById = async (id: number): Promise<{ data?: Incident }> => {
@@ -87,6 +109,9 @@ export const getAutomation = async (): Promise<AutomationConfig> => {
 export const updateAutomationSettings = async (changes: {
   mode?: AutomationMode;
   allowlist?: string[];
+  defaultCriticality?: Criticality;
+  maxActions?: number;
+  windowMinutes?: number;
 }): Promise<AutomationConfig> => {
   const { data } = await http.put<AutomationConfig>('/api/v1/automation/settings', changes);
   return data;

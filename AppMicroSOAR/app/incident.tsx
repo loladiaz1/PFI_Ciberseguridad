@@ -1,15 +1,19 @@
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, ScrollView } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, ScrollView, TextInput, Alert, KeyboardAvoidingView } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useFocusEffect } from "@react-navigation/native";
+import { isAxiosError } from "axios";
 import Colors from "../styles/colors";
 import BottomNav from "../components/BottomNav";
 import { BrandHeader } from "../components/ui/BrandHeader";
 import { MaterialCommunityIcons, MaterialIcons } from "@expo/vector-icons";
-import { getIncidentById, getIncidentTimeline } from "../services/api";
+import { getIncidentById, getIncidentTimeline, reopenIncident } from "../services/api";
+import { VERDICTS, tagsOf } from "../constants/verdicts";
 import { AUDIT_ICONS } from "../constants/audit";
 import { getStoredUser } from "../services/auth";
 import { incidentRules, severityLabel } from "../utils/severity";
 import type { Incident, MitigationAction, TimelineEntry } from "../types";
+import { S, formatDate } from "../constants/strings";
 
 // Formas que guarda orchestrator/src/enrichment.js (JSON.stringify).
 type VtStats = { malicious: number; suspicious: number; harmless: number };
@@ -37,17 +41,44 @@ export default function IncidentDetail() {
     // auditoria del caso cerrado para no alargar el detalle.
     const [showAlerts, setShowAlerts] = useState(true);
     const [showAudit, setShowAudit] = useState(false);
+    // Motivo de la automatizacion: 3 lineas; tocando se ve completo.
+    const [showReason, setShowReason] = useState(false);
 
-    useEffect(() => {
+    // Reapertura del caso.
+    const [reopening, setReopening] = useState(false);
+    const [reopenNote, setReopenNote] = useState("");
+    // Al escribir la nota de reapertura, el teclado no debe taparla: se
+    // lleva la tarjeta del cierre arriba de la pantalla.
+    const scrollRef = useRef<ScrollView>(null);
+    const closedCardY = useRef(0);
+
+    // Se recarga cada vez que la pantalla vuelve a quedar en foco: por
+    // ejemplo, al volver de cerrar el caso o de ejecutar una accion.
+    const load = useCallback(() => {
         if (!id) return;
         getIncidentById(Number(id))
             .then(({ data }) => setIncident(data ?? null))
-            .catch(() => setError("Could not load incident"))
+            .catch(() => setError(S.incident.loadError))
             .finally(() => setLoading(false));
         getIncidentTimeline(Number(id))
             .then(setTimeline)
             .catch(() => setTimeline([]));
     }, [id]);
+
+    useFocusEffect(load);
+
+    const confirmReopen = async () => {
+        if (!incident) return;
+        try {
+            await reopenIncident(incident.id, reopenNote.trim());
+            setReopening(false);
+            setReopenNote("");
+            load();
+        } catch (err) {
+            const detail = isAxiosError(err) ? err.response?.data?.detail : undefined;
+            Alert.alert(S.incident.reopenError, detail ?? S.common.genericError);
+        }
+    };
 
     if (loading) {
         return (
@@ -66,7 +97,7 @@ export default function IncidentDetail() {
             <View style={styles.container}>
                 <BrandHeader />
                 <View style={styles.centered}>
-                    <Text style={styles.value}>{error || "Incident not found"}</Text>
+                    <Text selectable style={styles.value}>{error || S.incident.notFound}</Text>
                 </View>
                 <BottomNav />
             </View>
@@ -75,7 +106,7 @@ export default function IncidentDetail() {
 
     const severity = severityLabel(incident.severity);
     const action: MitigationAction = incident.srcIp ? "block-ip" : "isolate-host";
-    const actionLabel = action === "block-ip" ? "BLOCK IP" : "ISOLATE HOST";
+    const actionLabel = action === "block-ip" ? S.actions.blockIp : S.actions.isolateHost;
     const vt: VtStats | null = incident.enrichmentVt ? JSON.parse(incident.enrichmentVt) : null;
     const abuse: AbuseStats | null = incident.enrichmentAbuseIpdb ? JSON.parse(incident.enrichmentAbuseIpdb) : null;
     const mitigatedAt = incident.status === "blocked" ? incident.blockedAt
@@ -86,71 +117,67 @@ export default function IncidentDetail() {
         <View style={styles.container}>
             <BrandHeader />
 
-            <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
+            <KeyboardAvoidingView style={styles.scroll} behavior="padding">
+            <ScrollView ref={scrollRef} style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
 
                 {/* El caso se identifica por su numero (el mismo que usa la
                     auditoria, "incident #N"); un caso agrupado tiene varias reglas. */}
-                <Text style={styles.title}>Incident #{incident.id}</Text>
-                <Text style={styles.rules}>
-                    {incidentRules(incident).length > 1 ? "Rules " : "Rule "}
-                    {incidentRules(incident).map((r) => `#${r}`).join(", ")}
-                </Text>
+                <Text style={styles.title}>{S.incident.title(incident.id)}</Text>
+                <Text selectable style={styles.rules}>{S.incident.rules(incidentRules(incident))}</Text>
 
                 {incident.ruleDescription ? (
-                    <Text style={styles.subtitle}>{incident.ruleDescription}</Text>
+                    <Text selectable style={styles.subtitle}>{incident.ruleDescription}</Text>
                 ) : null}
 
                 <View style={styles.card}>
 
-                    <Text style={styles.label}>Detected</Text>
-                    <Text style={styles.value}>{new Date(incident.timestamp).toLocaleString()}</Text>
+                    <Text style={styles.label}>{S.incident.detected}</Text>
+                    <Text selectable style={styles.value}>{formatDate(incident.timestamp)}</Text>
 
                     {incident.alertCount > 1 ? (
                         <>
-                            <Text style={styles.label}>Grouped alerts</Text>
-                            <Text style={styles.value}>
-                                {incident.alertCount} alerts from the same attack
-                            </Text>
+                            <Text style={styles.label}>{S.incident.groupedAlerts}</Text>
+                            <Text selectable style={styles.value}>{S.incident.groupedValue(incident.alertCount)}</Text>
                         </>
                     ) : null}
 
-                    <Text style={styles.label}>Severity</Text>
+                    <Text style={styles.label}>{S.fields.severity}</Text>
                     <View style={styles.statusRow}>
                         <MaterialIcons name="error" size={22} color={severity.color} />
                         <Text style={[styles.critical, { color: severity.color }]}>{severity.label}</Text>
                     </View>
 
-                    <Text style={styles.label}>Target</Text>
-                    <Text style={styles.value}>{incident.hostname}</Text>
+                    <Text style={styles.label}>{S.fields.target}</Text>
+                    <Text selectable style={styles.value}>{incident.hostname}</Text>
 
                     {incident.srcIp ? (
                         <>
-                            <Text style={styles.label}>Attacker IP</Text>
-                            <Text style={styles.value}>{incident.srcIp}</Text>
+                            <Text style={styles.label}>{S.fields.attackerIp}</Text>
+                            <Text selectable style={styles.value}>{incident.srcIp}</Text>
                         </>
                     ) : null}
 
-                    <Text style={styles.label}>Agent</Text>
-                    <Text style={styles.value}>{incident.agentId}</Text>
+                    <Text style={styles.label}>{S.fields.agent}</Text>
+                    <Text selectable style={styles.value}>{incident.agentId}</Text>
 
-                    <Text style={styles.label}>Status</Text>
-                    <Text style={styles.value}>{incident.status}</Text>
+                    <Text style={styles.label}>{S.fields.status}</Text>
+                    <Text selectable style={styles.value}>{incident.closedAt ? S.closed : S.incidentStatus[incident.status]}</Text>
 
                 </View>
 
                 {incident.srcIp ? (
                     <View style={styles.intel}>
-                        <Text style={styles.intelTitle}>Threat Intelligence</Text>
+                        <Text style={styles.intelTitle}>{S.incident.intel}</Text>
 
                         {!vt && !abuse ? (
-                            <Text style={styles.recText}>No threat intelligence available for this IP yet.</Text>
+                            <Text selectable style={styles.recText}>{S.incident.noIntel}</Text>
                         ) : null}
 
                         {vt ? (
                             <>
                                 <Text style={styles.label}>VirusTotal</Text>
-                                <Text style={[styles.value, vt.malicious > 0 && { color: Colors.danger }]}>
-                                    {vt.malicious} malicious · {vt.suspicious} suspicious · {vt.harmless} harmless
+                                <Text selectable style={[styles.value, vt.malicious > 0 && { color: Colors.danger }]}>
+                                    {S.incident.vt(vt.malicious, vt.suspicious, vt.harmless)}
                                 </Text>
                             </>
                         ) : null}
@@ -158,8 +185,8 @@ export default function IncidentDetail() {
                         {abuse ? (
                             <>
                                 <Text style={styles.label}>AbuseIPDB</Text>
-                                <Text style={[styles.value, abuse.abuseConfidenceScore >= 50 && { color: Colors.danger }]}>
-                                    {abuse.abuseConfidenceScore}% abuse confidence · {abuse.totalReports} reports
+                                <Text selectable style={[styles.value, abuse.abuseConfidenceScore >= 50 && { color: Colors.danger }]}>
+                                    {S.incident.abuse(abuse.abuseConfidenceScore, abuse.totalReports)}
                                     {abuse.countryCode ? ` · ${abuse.countryCode}` : ""}
                                 </Text>
                             </>
@@ -183,42 +210,101 @@ export default function IncidentDetail() {
                         <View style={styles.statusRow}>
                             <MaterialIcons name="smart-toy" size={20} color={Colors.text} />
                             <Text style={styles.automationTitle}>
-                                {incident.automationDecision === "executed" ? "Contained automatically"
-                                    : incident.automationDecision === "failed" ? "Automatic response failed: action required"
-                                    : `Simulation: would ${action === "block-ip" ? "block this IP" : "isolate this host"}`}
+                                {incident.automationDecision === "executed" ? S.incident.autoContained
+                                    : incident.automationDecision === "failed" ? S.incident.autoFailed
+                                    : S.incident.simulation(action === "block-ip")}
                             </Text>
                         </View>
                         {incident.automationPolicy ? (
-                            <Text style={styles.recText}>Policy: {incident.automationPolicy}</Text>
+                            <Text selectable style={styles.recText}>{S.incident.policy(incident.automationPolicy)}</Text>
                         ) : null}
-                        {incident.automationDecision === "failed" ? (
-                            <Text style={styles.automationReason}>{incident.automationReason}</Text>
+                        {incident.automationDecision === "failed" || incident.automationReason?.includes("cortacircuitos") ? (
+                            <Text selectable style={styles.automationReason}>{incident.automationReason}</Text>
                         ) : null}
                     </View>
                 ) : incident.automationReason ? (
-                    <Text style={styles.automationReason} numberOfLines={3}>
-                        Automation: {incident.automationReason}
-                    </Text>
+                    <TouchableOpacity onPress={() => setShowReason((v) => !v)}>
+                        {/* Expandido, una politica por linea (vienen separadas por " | ") */}
+                        <Text selectable style={styles.automationReason} numberOfLines={showReason ? undefined : 3}>
+                            {S.incident.automation(
+                                showReason ? incident.automationReason.split(" | ").join("\n") : incident.automationReason
+                            )}
+                        </Text>
+                        <Text style={styles.reasonToggle}>{showReason ? S.incident.showLess : S.incident.showMore}</Text>
+                    </TouchableOpacity>
                 ) : null}
 
-                {mitigatedAt ? (
-                    <View style={styles.recommendation}>
-                        <Text style={styles.recTitle}>Already mitigated</Text>
-                        <Text style={styles.recText}>
-                            {incident.status === "blocked" ? "This IP was blocked" : "This host was isolated"} at{" "}
-                            {new Date(mitigatedAt).toLocaleString()}.
+                {/* Etiquetas del caso (las del sistema y las del analista) */}
+                {tagsOf(incident).length ? (
+                    <View style={styles.tags}>
+                        {tagsOf(incident).map((t) => (
+                            <View key={t} style={styles.tag}>
+                                <Text style={styles.tagText}>{S.tags[t] ?? t}</Text>
+                            </View>
+                        ))}
+                    </View>
+                ) : null}
+
+                {incident.closedAt && incident.verdict ? (
+                    <View
+                        style={[styles.closed, { borderColor: VERDICTS[incident.verdict].color }]}
+                        onLayout={(e) => (closedCardY.current = e.nativeEvent.layout.y)}
+                    >
+                        <Text style={styles.recTitle}>{S.incident.closedTitle}</Text>
+                        <Text style={[styles.verdict, { color: VERDICTS[incident.verdict].color }]}>
+                            {VERDICTS[incident.verdict].label}
                         </Text>
+                        <Text selectable style={styles.recText}>{S.incident.closedBy(incident.closedBy, incident.closedAt)}</Text>
+                        {incident.closingNote ? <Text selectable style={styles.closingNote}>{`"${incident.closingNote}"`}</Text> : null}
+
+                        {canAct && !reopening ? (
+                            <TouchableOpacity style={styles.secondaryButton} onPress={() => setReopening(true)}>
+                                <Text style={styles.secondaryButtonText}>{S.incident.reopen}</Text>
+                            </TouchableOpacity>
+                        ) : null}
+                        {reopening ? (
+                            <>
+                                <TextInput
+                                    style={styles.noteInput}
+                                    multiline
+                                    value={reopenNote}
+                                    onChangeText={setReopenNote}
+                                    placeholder={S.incident.reopenPlaceholder}
+                                    placeholderTextColor={Colors.textSecondary}
+                                    onFocus={() => setTimeout(() => scrollRef.current?.scrollTo({ y: closedCardY.current }), 300)}
+                                />
+                                <View style={styles.rowButtons}>
+                                    <TouchableOpacity style={[styles.secondaryButton, styles.flex1]} onPress={() => setReopening(false)}>
+                                        <Text style={styles.secondaryButtonText}>{S.common.cancel}</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                        style={[styles.secondaryButton, styles.flex1, reopenNote.trim().length < 10 && styles.disabled]}
+                                        disabled={reopenNote.trim().length < 10}
+                                        onPress={confirmReopen}
+                                    >
+                                        <Text style={styles.secondaryButtonText}>{S.incident.reopenConfirm}</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            </>
+                        ) : null}
+                    </View>
+                ) : null}
+
+                {incident.closedAt ? null : mitigatedAt ? (
+                    <View style={styles.recommendation}>
+                        <Text style={styles.recTitle}>{S.incident.alreadyMitigated}</Text>
+                        <Text selectable style={styles.recText}>{S.incident.mitigatedAt(incident.status === "blocked", mitigatedAt)}</Text>
                     </View>
                 ) : (
                     <>
                         <View style={styles.recommendation}>
-                            <Text style={styles.recTitle}>Automatic Recommendation</Text>
-                            <Text style={styles.recText}>
+                            <Text style={styles.recTitle}>{S.incident.recommendationTitle}</Text>
+                            <Text selectable style={styles.recText}>
                                 {action === "block-ip"
-                                    ? `This IP triggered a ${severity.label.toLowerCase()} severity rule against ${incident.hostname}.`
-                                    : `${incident.hostname} triggered a ${severity.label.toLowerCase()} severity rule. Isolating it cuts all its network traffic except the Wazuh manager channel.`}
+                                    ? S.incident.recommendationBlock(severity.label.toLowerCase(), incident.hostname)
+                                    : S.incident.recommendationIsolate(severity.label.toLowerCase(), incident.hostname)}
                             </Text>
-                            <Text style={styles.recText}>Recommended action:</Text>
+                            <Text selectable style={styles.recText}>{S.incident.recommendedAction}</Text>
                             <Text style={styles.block}>{actionLabel}</Text>
                         </View>
 
@@ -230,17 +316,26 @@ export default function IncidentDetail() {
                                 <Text style={styles.buttonText}>{actionLabel}</Text>
                             </TouchableOpacity>
                         ) : (
-                            <Text style={styles.readOnly}>Read-only access: an analyst must run this action.</Text>
+                            <Text style={styles.readOnly}>{S.incident.readOnly}</Text>
                         )}
                     </>
                 )}
+
+                {!incident.closedAt && canAct ? (
+                    <TouchableOpacity
+                        style={styles.secondaryButton}
+                        onPress={() => router.push({ pathname: "/close", params: { id: String(incident.id) } })}
+                    >
+                        <Text style={styles.secondaryButtonText}>{S.incident.closeCase}</Text>
+                    </TouchableOpacity>
+                ) : null}
 
                 {/* Evidencia del caso: cada alerta, incluidas las agrupadas */}
                 {timeline.some((e) => e.kind === "alert") ? (
                     <View style={styles.timeline}>
                         <TouchableOpacity style={styles.sectionHeader} onPress={() => setShowAlerts((v) => !v)}>
                             <Text style={styles.timelineTitle}>
-                                Alerts ({timeline.filter((e) => e.kind === "alert").length})
+                                {S.incident.alerts(timeline.filter((e) => e.kind === "alert").length)}
                             </Text>
                             <MaterialCommunityIcons name={showAlerts ? "chevron-up" : "chevron-down"} size={24} color={Colors.textSecondary} />
                         </TouchableOpacity>
@@ -250,14 +345,14 @@ export default function IncidentDetail() {
                                       <View key={`alert-${i}`} style={styles.timelineRow}>
                                           <MaterialCommunityIcons name="alert-circle" size={18} color={severityLabel(entry.severity).color} />
                                           <View style={styles.timelineText}>
-                                              <Text style={styles.timelineMain}>
-                                                  Rule #{entry.ruleId}{entry.grouped ? " (grouped)" : ""}
+                                              <Text selectable style={styles.timelineMain}>
+                                                  {S.incident.alertRule(entry.ruleId, entry.grouped)}
                                               </Text>
-                                              {entry.detail ? <Text style={styles.timelineSub}>{entry.detail}</Text> : null}
+                                              {entry.detail ? <Text selectable style={styles.timelineSub}>{entry.detail}</Text> : null}
                                               {entry.hashPositives != null ? (
-                                                  <Text style={styles.timelineSub}>{entry.hashPositives} VirusTotal engines</Text>
+                                                  <Text selectable style={styles.timelineSub}>{S.incident.vtEngines(entry.hashPositives)}</Text>
                                               ) : null}
-                                              <Text style={styles.timelineTime}>{new Date(entry.at).toLocaleString()}</Text>
+                                              <Text style={styles.timelineTime}>{formatDate(entry.at)}</Text>
                                           </View>
                                       </View>
                                   ) : null
@@ -271,7 +366,7 @@ export default function IncidentDetail() {
                     <View style={styles.timeline}>
                         <TouchableOpacity style={styles.sectionHeader} onPress={() => setShowAudit((v) => !v)}>
                             <Text style={styles.timelineTitle}>
-                                Audit log ({timeline.filter((e) => e.kind === "event").length})
+                                {S.incident.auditLog(timeline.filter((e) => e.kind === "event").length)}
                             </Text>
                             <MaterialCommunityIcons name={showAudit ? "chevron-up" : "chevron-down"} size={24} color={Colors.textSecondary} />
                         </TouchableOpacity>
@@ -281,9 +376,9 @@ export default function IncidentDetail() {
                                       <View key={`event-${i}`} style={styles.timelineRow}>
                                           <MaterialCommunityIcons name={AUDIT_ICONS[entry.type] ?? "bell-outline"} size={18} color={Colors.primary} />
                                           <View style={styles.timelineText}>
-                                              <Text style={styles.timelineMain}>{entry.detail}</Text>
-                                              {entry.actor ? <Text style={styles.timelineSub}>by {entry.actor}</Text> : null}
-                                              <Text style={styles.timelineTime}>{new Date(entry.at).toLocaleString()}</Text>
+                                              <Text selectable style={styles.timelineMain}>{entry.detail}</Text>
+                                              {entry.actor ? <Text selectable style={styles.timelineSub}>{S.common.by(entry.actor)}</Text> : null}
+                                              <Text style={styles.timelineTime}>{formatDate(entry.at)}</Text>
                                           </View>
                                       </View>
                                   ) : null
@@ -293,6 +388,7 @@ export default function IncidentDetail() {
                 ) : null}
 
             </ScrollView>
+            </KeyboardAvoidingView>
 
             <BottomNav />
 
@@ -372,6 +468,93 @@ const styles = StyleSheet.create({
         marginLeft: 8,
         fontWeight: "bold",
         fontSize: 22
+    },
+
+    tags: {
+        flexDirection: "row",
+        flexWrap: "wrap",
+        gap: 6,
+        marginTop: 14,
+    },
+
+    // Borde y relleno en un View: sobre un Text, Android los dibuja desparejos.
+    tag: {
+        backgroundColor: Colors.card2,
+        borderWidth: 1,
+        borderColor: Colors.border,
+        borderRadius: 14,
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+    },
+
+    tagText: {
+        color: Colors.text,
+        fontSize: 12,
+    },
+
+    reasonToggle: {
+        color: Colors.primary,
+        fontSize: 12,
+        marginTop: 4,
+    },
+
+    closed: {
+        backgroundColor: Colors.card,
+        padding: 16,
+        borderRadius: 16,
+        marginTop: 25,
+        borderWidth: 1,
+    },
+
+    verdict: {
+        fontWeight: "bold",
+        fontSize: 20,
+        marginBottom: 6,
+    },
+
+    closingNote: {
+        color: Colors.text,
+        fontStyle: "italic",
+        marginTop: 6,
+    },
+
+    secondaryButton: {
+        marginTop: 16,
+        borderWidth: 1,
+        borderColor: Colors.primary,
+        padding: 14,
+        borderRadius: 14,
+        alignItems: "center",
+    },
+
+    secondaryButtonText: {
+        color: Colors.primary,
+        fontWeight: "bold",
+        fontSize: 16,
+    },
+
+    noteInput: {
+        borderWidth: 1,
+        borderColor: Colors.border,
+        borderRadius: 12,
+        color: Colors.text,
+        padding: 12,
+        minHeight: 80,
+        marginTop: 12,
+        textAlignVertical: "top",
+    },
+
+    rowButtons: {
+        flexDirection: "row",
+        gap: 10,
+    },
+
+    flex1: {
+        flex: 1,
+    },
+
+    disabled: {
+        opacity: 0.4,
     },
 
     timeline: {

@@ -5,9 +5,9 @@ const { prisma } = require("./db");
 const CATEGORIES = {
   access: ["login", "user_registered"],
   users: ["user_updated", "user_removed", "account_deleted"],
-  incidents: ["incident_detected", "alert_grouped"],
-  response: ["ip_blocked", "host_isolated"],
-  automation: ["automation_simulated", "automation_failed", "automation_updated"],
+  incidents: ["incident_detected", "alert_grouped", "incident_closed", "incident_reopened"],
+  response: ["ip_blocked", "host_isolated", "mitigation_failed"],
+  automation: ["automation_simulated", "automation_failed", "automation_updated", "automation_paused"],
 };
 
 function categoryOf(type) {

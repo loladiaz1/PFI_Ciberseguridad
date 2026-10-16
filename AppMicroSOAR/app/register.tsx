@@ -14,6 +14,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { isAxiosError } from "axios";
 import { signUp } from "../services/auth";
 import Colors from "../styles/colors";
+import { S } from "@/constants/strings";
 
 export default function RegisterScreen() {
   const router = useRouter();
@@ -81,40 +82,40 @@ export default function RegisterScreen() {
 
     if (!name || !email || !password) {
       Alert.alert(
-        "Incomplete fields",
-        "Please complete all fields."
+        S.register.incompleteTitle,
+        S.register.incompleteBody
       );
       return;
     }
 
     if (!nameValid) {
       Alert.alert(
-        "Invalid name",
-        "Your name must contain at least 2 characters."
+        S.register.invalidNameTitle,
+        S.register.invalidNameBody
       );
       return;
     }
 
     if (!emailValid) {
       Alert.alert(
-        "Invalid email",
-        "Please enter a valid email address."
+        S.register.invalidEmailTitle,
+        S.register.invalidEmailBody
       );
       return;
     }
 
     if (!passwordValid) {
       Alert.alert(
-        "Weak password",
-        "Your password must contain at least 9 characters, one uppercase letter, one lowercase letter, one number and one special character."
+        S.register.weakPasswordTitle,
+        S.register.weakPasswordBody
       );
       return;
     }
 
     if (!acceptedPrivacy) {
       Alert.alert(
-        "Privacy policy",
-        "You must read and accept the privacy policy to create an account."
+        S.register.privacyTitle,
+        S.register.privacyBody
       );
       return;
     }
@@ -139,8 +140,8 @@ export default function RegisterScreen() {
       // la apruebe (registro con aprobacion, RBAC).
 
       Alert.alert(
-        "Registration sent",
-        "An administrator must approve your account before you can log in. Use your email as username."
+        S.register.sentTitle,
+        S.register.sentBody
       );
 
       router.replace("/");
@@ -157,22 +158,22 @@ export default function RegisterScreen() {
       // --------------------------------------
 
       let message =
-        "Unable to create the account.";
+        S.register.failed;
 
       if (isAxiosError(error) && error.response?.status === 409) {
-        message = "This email is already registered.";
+        message = S.register.emailTaken;
       } else if (isAxiosError(error) && error.response?.status === 429) {
-        message = "Too many attempts. Please wait a few minutes and try again.";
+        message = S.common.tooManyAttempts;
       } else if (isAxiosError(error) && error.response) {
         message = error.response.data?.detail ?? message;
       } else if (isAxiosError(error)) {
-        message = "Unable to connect to the server.";
+        message = S.common.noConnection;
       } else if (error instanceof Error) {
         message = error.message;
       }
 
       Alert.alert(
-        "Registration failed",
+        S.register.failedTitle,
         message
       );
 
@@ -212,7 +213,7 @@ export default function RegisterScreen() {
 
         <TextInput
           style={styles.input}
-          placeholder="Name"
+          placeholder={S.register.namePlaceholder}
           placeholderTextColor={Colors.border}
           value={name}
           onChangeText={setName}
@@ -223,7 +224,7 @@ export default function RegisterScreen() {
 
         <TextInput
           style={styles.input}
-          placeholder="example@company.com"
+          placeholder={S.register.emailPlaceholder}
           placeholderTextColor={Colors.border}
           value={email}
           onChangeText={setEmail}
@@ -237,7 +238,7 @@ export default function RegisterScreen() {
 
           <TextInput
             style={styles.passwordInput}
-            placeholder="Password"
+            placeholder={S.register.passwordPlaceholder}
             placeholderTextColor={Colors.border}
             secureTextEntry={!showPassword}
             value={password}
@@ -276,43 +277,43 @@ export default function RegisterScreen() {
           <View style={styles.validationBox}>
 
             <ValidationRow
-              text="Name has at least 2 characters"
+              text={S.register.rules.name}
               valid={nameValid}
               visible={name.length > 0}
             />
 
             <ValidationRow
-              text="Valid email address"
+              text={S.register.rules.email}
               valid={emailValid}
               visible={email.length > 0}
             />
 
             <ValidationRow
-              text="At least 9 characters"
+              text={S.register.rules.length}
               valid={passwordHasLength}
               visible={password.length > 0}
             />
 
             <ValidationRow
-              text="At least one uppercase letter"
+              text={S.register.rules.uppercase}
               valid={passwordHasUppercase}
               visible={password.length > 0}
             />
 
             <ValidationRow
-              text="At least one lowercase letter"
+              text={S.register.rules.lowercase}
               valid={passwordHasLowercase}
               visible={password.length > 0}
             />
 
             <ValidationRow
-              text="At least one number"
+              text={S.register.rules.number}
               valid={passwordHasNumber}
               visible={password.length > 0}
             />
 
             <ValidationRow
-              text="At least one special character"
+              text={S.register.rules.special}
               valid={passwordHasSpecial}
               visible={password.length > 0}
             />
@@ -338,9 +339,9 @@ export default function RegisterScreen() {
             />
           </Pressable>
           <Text style={styles.consentText}>
-            I have read and accept the{" "}
+            {S.register.acceptPrefix}{" "}
             <Text style={styles.loginLink} onPress={() => router.push("/privacy")}>
-              privacy policy
+              {S.register.privacyLink}
             </Text>
           </Text>
         </View>
@@ -360,8 +361,8 @@ export default function RegisterScreen() {
 
           <Text style={styles.buttonText}>
             {loading
-              ? "CREATING ACCOUNT..."
-              : "REGISTER"}
+              ? S.register.submitting
+              : S.register.submit}
           </Text>
 
         </Pressable>
@@ -378,7 +379,7 @@ export default function RegisterScreen() {
       >
 
         <Text style={styles.loginLink}>
-          Already have an account? Log in
+          {S.register.haveAccount}
         </Text>
 
       </Pressable>

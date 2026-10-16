@@ -21,29 +21,30 @@ import { getStoredUser } from "@/services/auth";
 import { confirmWithBiometrics } from "@/services/stepUp";
 import Colors from "@/styles/colors";
 import type { AutomationConfig, AutomationMode, AutomationPolicy, Criticality, PolicyConditions } from "@/types";
+import { S } from "@/constants/strings";
 
 // Automatizacion de la respuesta segun contexto. Cualquier rol la ve; solo
 // un admin la cambia, con step-up biometrico (el backend vuelve a validar el
 // rol y audita cada cambio).
-const MODES: { mode: AutomationMode; label: string; help: string }[] = [
-  { mode: "off", label: "Off", help: "Every incident waits for an analyst." },
-  { mode: "simulate", label: "Simulation", help: "Policies are evaluated and logged, but nothing is executed." },
-  { mode: "active", label: "Active", help: "Matching incidents are contained automatically." },
-];
+const MODES: { mode: AutomationMode; label: string; help: string }[] = (["off", "simulate", "active"] as const).map(
+  (mode) => ({ mode, ...S.automation.modes[mode] })
+);
 const CRITICALITIES: Criticality[] = ["low", "medium", "high", "critical"];
 const NUMERIC: { key: keyof PolicyConditions; label: string }[] = [
-  { key: "minSeverity", label: "Severity ≥" },
-  { key: "minAbuseScore", label: "AbuseIPDB score ≥" },
-  { key: "minVtMalicious", label: "VirusTotal detections (IP) ≥" },
-  { key: "minHashPositives", label: "VirusTotal engines (file) ≥" },
+  { key: "minSeverity", label: S.automation.conditions.minSeverity },
+  { key: "minAbuseScore", label: S.automation.conditions.minAbuseScore },
+  { key: "minVtMalicious", label: S.automation.conditions.minVtMalicious },
+  { key: "minHashPositives", label: S.automation.conditions.minHashPositives },
 ];
 
 function describe(conditions: PolicyConditions): string[] {
   const lines = NUMERIC.filter(({ key }) => conditions[key] !== undefined).map(
     ({ key, label }) => `${label} ${conditions[key]}`
   );
-  if (conditions.fromCountries) lines.push(`Country in ${conditions.fromCountries.join(", ")}`);
-  if (conditions.maxAssetCriticality) lines.push(`Asset criticality ≤ ${conditions.maxAssetCriticality}`);
+  if (conditions.fromCountries) lines.push(S.automation.conditions.country(conditions.fromCountries));
+  if (conditions.maxAssetCriticality) {
+    lines.push(S.automation.conditions.assetCriticality(S.criticality[conditions.maxAssetCriticality]));
+  }
   return lines;
 }
 
@@ -55,16 +56,21 @@ export default function AutomationScreen() {
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [draftCriticality, setDraftCriticality] = useState<Criticality | undefined>();
   const [allowlist, setAllowlist] = useState("");
+  // Cortacircuitos (texto editable; se valida al guardar).
+  const [maxActions, setMaxActions] = useState("");
+  const [windowMinutes, setWindowMinutes] = useState("");
 
   const load = useCallback(() => {
     return Promise.all([getAutomation(), getStoredUser()])
       .then(([cfg, me]) => {
         setConfig(cfg);
         setAllowlist(cfg.settings.allowlist.join(", "));
+        setMaxActions(String(cfg.settings.maxActions));
+        setWindowMinutes(String(cfg.settings.windowMinutes));
         setIsAdmin(me.role === "admin");
         setError("");
       })
-      .catch(() => setError("Could not load automation settings"));
+      .catch(() => setError(S.automation.loadError));
   }, []);
 
   useFocusEffect(
@@ -82,20 +88,20 @@ export default function AutomationScreen() {
       return true;
     } catch (err) {
       const detail = isAxiosError(err) ? err.response?.data?.detail : undefined;
-      Alert.alert("Change not saved", detail ?? "Something went wrong. Try again.");
+      Alert.alert(S.automation.notSaved, detail ?? S.common.genericError);
       return false;
     }
   };
 
   const changeMode = (mode: AutomationMode) => {
-    const apply = () => run(`Confirm automation mode: ${mode}`, () => updateAutomationSettings({ mode }));
+    const apply = () => run(S.automation.confirmMode(S.automation.modes[mode].label), () => updateAutomationSettings({ mode }));
     if (mode !== "active") return apply();
     Alert.alert(
-      "Enable automatic response",
-      "Matching incidents will be contained without waiting for an analyst. Critical assets and allowlisted IPs are always excluded.",
+      S.automation.enableTitle,
+      S.automation.enableBody,
       [
-        { text: "Cancel", style: "cancel" },
-        { text: "Enable", style: "destructive", onPress: apply },
+        { text: S.common.cancel, style: "cancel" },
+        { text: S.automation.enable, style: "destructive", onPress: apply },
       ]
     );
   };
@@ -115,19 +121,29 @@ export default function AutomationScreen() {
     for (const [key, value] of Object.entries(draft)) {
       const n = Number(value);
       if (!Number.isFinite(n) || n < 0) {
-        Alert.alert("Invalid value", "Thresholds must be numbers ≥ 0.");
+        Alert.alert(S.automation.invalidValue, S.automation.invalidThresholds);
         return;
       }
       (conditions as Record<string, number>)[key] = n;
     }
     if (draftCriticality) conditions.maxAssetCriticality = draftCriticality;
-    const saved = await run(`Confirm changes to "${policy.name}"`, () => updatePolicy(policy.id, { conditions }));
+    const saved = await run(S.automation.confirmPolicy(policy.name), () => updatePolicy(policy.id, { conditions }));
     if (saved) setEditing(null);
+  };
+
+  const saveBreaker = () => {
+    const max = Number(maxActions);
+    const minutes = Number(windowMinutes);
+    if (!Number.isInteger(max) || max < 1 || !Number.isInteger(minutes) || minutes < 1) {
+      Alert.alert(S.automation.invalidValue, S.automation.invalidBreaker);
+      return;
+    }
+    run(S.automation.confirmBreaker, () => updateAutomationSettings({ maxActions: max, windowMinutes: minutes }));
   };
 
   const saveAllowlist = () => {
     const entries = allowlist.split(",").map((e) => e.trim()).filter(Boolean);
-    run("Confirm allowlist change", () => updateAutomationSettings({ allowlist: entries }));
+    run(S.automation.confirmAllowlist, () => updateAutomationSettings({ allowlist: entries }));
   };
 
   if (!config) {
@@ -150,15 +166,15 @@ export default function AutomationScreen() {
       <ScrollView contentContainerStyle={styles.content}>
         <TouchableOpacity style={styles.back} onPress={() => router.back()}>
           <MaterialCommunityIcons name="arrow-left" size={20} color={Colors.textSecondary} />
-          <Text style={styles.backText}>Back</Text>
+          <Text style={styles.backText}>{S.common.back}</Text>
         </TouchableOpacity>
 
-        <Text style={styles.title}>Automation</Text>
-        <Text style={styles.subtitle}>Context-based automatic response</Text>
-        {!isAdmin ? <Text style={styles.readOnly}>Read-only: only an administrator can change automation.</Text> : null}
+        <Text style={styles.title}>{S.automation.title}</Text>
+        <Text style={styles.subtitle}>{S.automation.subtitle}</Text>
+        {!isAdmin ? <Text style={styles.readOnly}>{S.automation.readOnly}</Text> : null}
 
         {/* MODO */}
-        <Text style={styles.section}>Mode</Text>
+        <Text style={styles.section}>{S.automation.mode}</Text>
         <View style={styles.card}>
           <View style={styles.chips}>
             {MODES.map(({ mode, label }) => (
@@ -173,23 +189,59 @@ export default function AutomationScreen() {
             ))}
           </View>
           <Text style={styles.help}>{MODES.find((m) => m.mode === settings.mode)?.help}</Text>
-          <Text style={styles.help}>Critical assets and allowlisted IPs are never contained automatically.</Text>
+          <Text style={styles.help}>{S.automation.neverContained}</Text>
+          {settings.updatedBy === "automation" && settings.mode === "simulate" ? (
+            <Text style={styles.paused}>{S.automation.paused}</Text>
+          ) : null}
           {settings.updatedBy ? (
-            <Text style={styles.meta}>
-              Last change by {settings.updatedBy} · {new Date(settings.updatedAt).toLocaleString()}
-            </Text>
+            <Text style={styles.meta}>{S.automation.lastChange(settings.updatedBy, settings.updatedAt)}</Text>
           ) : null}
         </View>
 
+        {/* LIMITES DE SEGURIDAD */}
+        <Text style={styles.section}>{S.automation.safetyLimits}</Text>
+        <View style={styles.card}>
+          <Text style={styles.policyName}>{S.automation.breaker}</Text>
+          <Text style={styles.help}>{S.automation.breakerHelp}</Text>
+          <View style={styles.inputRow}>
+            <Text style={styles.inputLabel}>{S.automation.maxActions}</Text>
+            <TextInput style={styles.input} keyboardType="numeric" editable={isAdmin} value={maxActions} onChangeText={setMaxActions} />
+          </View>
+          <View style={styles.inputRow}>
+            <Text style={styles.inputLabel}>{S.automation.windowMinutes}</Text>
+            <TextInput style={styles.input} keyboardType="numeric" editable={isAdmin} value={windowMinutes} onChangeText={setWindowMinutes} />
+          </View>
+          {isAdmin ? (
+            <TouchableOpacity style={[styles.button, styles.primary, styles.saveAllowlist]} onPress={saveBreaker}>
+              <Text style={styles.buttonText}>{S.automation.saveLimits}</Text>
+            </TouchableOpacity>
+          ) : null}
+
+          <Text style={[styles.policyName, styles.spaced]}>{S.automation.unknownAssets}</Text>
+          <Text style={styles.help}>{S.automation.unknownAssetsHelp}</Text>
+          <View style={styles.chips}>
+            {CRITICALITIES.map((c) => (
+              <TouchableOpacity
+                key={c}
+                style={[styles.chip, settings.defaultCriticality === c && styles.chipActive]}
+                disabled={!isAdmin || settings.defaultCriticality === c}
+                onPress={() => run(S.automation.confirmDefaultCriticality(S.criticality[c]), () => updateAutomationSettings({ defaultCriticality: c }))}
+              >
+                <Text style={[styles.chipText, settings.defaultCriticality === c && styles.chipTextActive]}>{S.criticality[c]}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
         {/* POLITICAS */}
-        <Text style={styles.section}>Policies (first match wins)</Text>
+        <Text style={styles.section}>{S.automation.policies}</Text>
         {policies.map((policy) => (
           <View key={policy.id} style={[styles.card, !policy.enabled && styles.cardDisabled]}>
             <View style={styles.policyHeader}>
               <View style={styles.flex}>
                 <Text style={styles.policyName}>{policy.name}</Text>
                 <Text style={styles.meta}>
-                  {policy.useCase} · {policy.action === "block-ip" ? "Block IP" : "Isolate host"}
+                  {policy.useCase} · {policy.action === "block-ip" ? S.automation.blockIp : S.automation.isolateHost}
                 </Text>
               </View>
               <Switch
@@ -197,7 +249,7 @@ export default function AutomationScreen() {
                 disabled={!isAdmin}
                 trackColor={{ true: Colors.primary, false: Colors.border }}
                 onValueChange={(enabled) => {
-                  run(`Confirm to ${enabled ? "enable" : "disable"} "${policy.name}"`, () => updatePolicy(policy.id, { enabled }));
+                  run(S.automation.confirmPolicyToggle(enabled, policy.name), () => updatePolicy(policy.id, { enabled }));
                 }}
               />
             </View>
@@ -217,7 +269,7 @@ export default function AutomationScreen() {
                 ))}
                 {policy.conditions.maxAssetCriticality ? (
                   <>
-                    <Text style={styles.inputLabel}>Asset criticality ≤</Text>
+                    <Text style={styles.inputLabel}>{S.automation.conditions.maxAssetCriticality}</Text>
                     <View style={styles.chips}>
                       {CRITICALITIES.filter((c) => c !== "critical").map((c) => (
                         <TouchableOpacity
@@ -225,7 +277,7 @@ export default function AutomationScreen() {
                           style={[styles.chip, draftCriticality === c && styles.chipActive]}
                           onPress={() => setDraftCriticality(c)}
                         >
-                          <Text style={[styles.chipText, draftCriticality === c && styles.chipTextActive]}>{c}</Text>
+                          <Text style={[styles.chipText, draftCriticality === c && styles.chipTextActive]}>{S.criticality[c]}</Text>
                         </TouchableOpacity>
                       ))}
                     </View>
@@ -233,10 +285,10 @@ export default function AutomationScreen() {
                 ) : null}
                 <View style={styles.actions}>
                   <TouchableOpacity style={[styles.button, styles.secondary]} onPress={() => setEditing(null)}>
-                    <Text style={styles.secondaryText}>Cancel</Text>
+                    <Text style={styles.secondaryText}>{S.common.cancel}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={[styles.button, styles.primary]} onPress={() => savePolicy(policy)}>
-                    <Text style={styles.buttonText}>Save</Text>
+                    <Text style={styles.buttonText}>{S.common.save}</Text>
                   </TouchableOpacity>
                 </View>
               </>
@@ -247,9 +299,10 @@ export default function AutomationScreen() {
                     • {line}
                   </Text>
                 ))}
+                <PolicyPrecision policy={policy} />
                 {isAdmin ? (
                   <TouchableOpacity style={styles.link} onPress={() => startEditing(policy)}>
-                    <Text style={styles.linkText}>Edit thresholds</Text>
+                    <Text style={styles.linkText}>{S.automation.editThresholds}</Text>
                   </TouchableOpacity>
                 ) : null}
               </>
@@ -258,15 +311,13 @@ export default function AutomationScreen() {
         ))}
 
         {/* ACTIVOS */}
-        <Text style={styles.section}>Assets</Text>
+        <Text style={styles.section}>{S.automation.assets}</Text>
         <View style={styles.card}>
-          <Text style={styles.help}>
-            Agents not listed use the default criticality ({settings.defaultCriticality}).
-          </Text>
+          <Text style={styles.help}>{S.automation.assetsHelp(S.criticality[settings.defaultCriticality])}</Text>
           {assets.map((asset) => (
             <View key={asset.agentId} style={styles.asset}>
               <Text style={styles.policyName}>
-                {asset.name} <Text style={styles.meta}>· agent {asset.agentId}</Text>
+                {asset.name} <Text style={styles.meta}>{S.automation.agent(asset.agentId)}</Text>
               </Text>
               <View style={styles.chips}>
                 {CRITICALITIES.map((c) => (
@@ -274,9 +325,9 @@ export default function AutomationScreen() {
                     key={c}
                     style={[styles.chip, asset.criticality === c && styles.chipActive]}
                     disabled={!isAdmin || asset.criticality === c}
-                    onPress={() => run(`Confirm ${asset.name} as ${c}`, () => updateAsset(asset.agentId, c))}
+                    onPress={() => run(S.automation.confirmAsset(asset.name, S.criticality[c]), () => updateAsset(asset.agentId, c))}
                   >
-                    <Text style={[styles.chipText, asset.criticality === c && styles.chipTextActive]}>{c}</Text>
+                    <Text style={[styles.chipText, asset.criticality === c && styles.chipTextActive]}>{S.criticality[c]}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -285,20 +336,20 @@ export default function AutomationScreen() {
         </View>
 
         {/* EXCLUSIONES */}
-        <Text style={styles.section}>Allowlist (never blocked)</Text>
+        <Text style={styles.section}>{S.automation.allowlist}</Text>
         <View style={styles.card}>
           <TextInput
             style={styles.input}
             value={allowlist}
             editable={isAdmin}
             onChangeText={setAllowlist}
-            placeholder="e.g. 10.0.0.0/8, 203.0.113.7"
+            placeholder={S.automation.allowlistPlaceholder}
             placeholderTextColor={Colors.textSecondary}
             autoCapitalize="none"
           />
           {isAdmin ? (
             <TouchableOpacity style={[styles.button, styles.primary, styles.saveAllowlist]} onPress={saveAllowlist}>
-              <Text style={styles.buttonText}>Save allowlist</Text>
+              <Text style={styles.buttonText}>{S.automation.saveAllowlist}</Text>
             </TouchableOpacity>
           ) : null}
         </View>
@@ -344,4 +395,37 @@ const styles = StyleSheet.create({
   secondaryText: { color: Colors.text, fontWeight: "600" },
   asset: { marginTop: 14 },
   saveAllowlist: { marginTop: 12, flex: 0 },
+  paused: { color: Colors.warning, marginTop: 10, fontWeight: "600" },
+  spaced: { marginTop: 18 },
+  precision: { marginTop: 10, borderTopWidth: 1, borderTopColor: Colors.border, paddingTop: 8 },
+  precisionLine: { color: Colors.textSecondary, fontSize: 12, marginTop: 2 },
+  precisionValue: { color: Colors.text, fontWeight: "700" },
 });
+
+// Precision de la politica medida con los veredictos de los analistas: de
+// los casos que contuvo (o habria contenido), cuantos eran ataques reales.
+function PolicyPrecision({ policy }: { policy: AutomationPolicy }) {
+  const line = (label: string, c: AutomationPolicy["stats"]["executed"]) =>
+    c.total ? (
+      <Text style={styles.precisionLine}>
+        {label}: {c.total} · {S.automation.precision.closed(c.closed)}
+        {c.precision !== null ? (
+          <>
+            {" "}· {S.automation.precision.precision} <Text style={styles.precisionValue}>{Math.round(c.precision * 100)}%</Text>
+            {" "}{S.automation.precision.counts(c.true_positive, c.benign_positive, c.false_positive)}
+          </>
+        ) : null}
+      </Text>
+    ) : null;
+
+  const { executed, simulated } = policy.stats;
+  if (!executed.total && !simulated.total) {
+    return <Text style={[styles.precisionLine, styles.precision]}>{S.automation.precision.none}</Text>;
+  }
+  return (
+    <View style={styles.precision}>
+      {line(S.automation.precision.contained, executed)}
+      {line(S.automation.precision.simulated, simulated)}
+    </View>
+  );
+}

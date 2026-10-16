@@ -10,6 +10,7 @@ import { getAuditEvents } from "@/services/api";
 import { AUDIT_CATEGORIES, AUDIT_ICONS } from "@/constants/audit";
 import Colors from "@/styles/colors";
 import type { ActivityItem, AuditCategory } from "@/types";
+import { S, formatDate } from "@/constants/strings";
 
 
 export default function ActivityScreen() {
@@ -29,7 +30,7 @@ export default function ActivityScreen() {
           setError("");
         })
         .catch(() => {
-          if (!cancelled) setError("Could not load activity");
+          if (!cancelled) setError(S.activity.loadError);
         })
         .finally(() => {
           if (!cancelled) setLoading(false);
@@ -43,7 +44,7 @@ export default function ActivityScreen() {
   return (
     <View style={styles.container}>
       <BrandHeader />
-      <Header title="Activity" subtitle="Recent system events" />
+      <Header title={S.activity.title} subtitle={S.activity.subtitle} />
 
       {/* Filtro por categoria (las calcula el backend, src/audit.js) */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filters} contentContainerStyle={styles.filtersContent}>
@@ -64,7 +65,7 @@ export default function ActivityScreen() {
         {loading && <ActivityIndicator size="large" style={styles.spinner} />}
         {error ? <Text style={styles.error}>{error}</Text> : null}
         {!loading && !error && events.length === 0 && (
-          <Text style={styles.empty}>No recent activity yet.</Text>
+          <Text style={styles.empty}>{S.activity.empty}</Text>
         )}
 
         {events.map((item) => (
@@ -83,9 +84,9 @@ export default function ActivityScreen() {
             <View style={styles.textBlock}>
               <Text style={styles.title}>{item.detail}</Text>
               <Text style={styles.time}>
-                {new Date(item.createdAt).toLocaleString()}
+                {formatDate(item.createdAt)}
                 {item.actor ? ` · ${item.actor}` : ""}
-                {item.incidentId ? ` · incident #${item.incidentId}` : ""}
+                {item.incidentId ? S.activity.incidentRef(item.incidentId) : ""}
               </Text>
             </View>
             {item.incidentId ? (

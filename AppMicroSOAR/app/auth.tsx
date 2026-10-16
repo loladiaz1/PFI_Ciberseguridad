@@ -6,6 +6,7 @@ import Colors from "../styles/colors";
 import BottomNav from "@/components/BottomNav";
 import { BrandHeader } from "@/components/ui/BrandHeader";
 import type { MitigationAction } from "@/types";
+import { S } from "@/constants/strings";
 
 export default function AuthScreen(){
 
@@ -19,20 +20,20 @@ const authenticate = async () => {
     const isEnrolled = await LocalAuthentication.isEnrolledAsync();
 
     if (!hasHardware || !isEnrolled) {
-        setError("No biometrics enrolled on this device. Set up Face ID / Fingerprint to continue.");
+        setError(S.biometrics.notEnrolled);
         return;
     }
 
     const result = await LocalAuthentication.authenticateAsync({
         promptMessage: action === "isolate-host"
-            ? "Confirm it's you to isolate this host"
-            : "Confirm it's you to block this IP",
+            ? S.stepUp.promptIsolate
+            : S.stepUp.promptBlock,
     });
 
     if (result.success) {
         router.push({ pathname: "/confirm", params: { id, action } });
     } else if (result.error !== "user_cancel") {
-        setError("Authentication failed. Try again.");
+        setError(S.stepUp.failed);
     }
 };
 
@@ -47,12 +48,11 @@ return(
 <Text style={styles.icon}>🛡️</Text>
 
 <Text style={styles.title}>
-Step-Up Authentication
+{S.stepUp.title}
 </Text>
 
 <Text style={styles.subtitle}>
-Authenticate with Face ID or Fingerprint
-to continue.
+{S.stepUp.subtitle}
 </Text>
 
 <Text style={styles.fingerprint}>
@@ -67,7 +67,7 @@ onPress={authenticate}
 >
 
 <Text style={styles.buttonText}>
-Authenticate
+{S.stepUp.submit}
 </Text>
 
 </TouchableOpacity>
@@ -87,6 +87,7 @@ const styles = StyleSheet.create({
   container:{
     flex:1,
     backgroundColor:Colors.background,
+    paddingTop:60,
   },
 
   content:{

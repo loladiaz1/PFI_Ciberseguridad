@@ -6,6 +6,7 @@ import Colors from "../styles/colors";
 import BottomNav from "../components/BottomNav";
 import { BrandHeader } from "../components/ui/BrandHeader";
 import type { MitigationAction } from "../types";
+import { S } from "@/constants/strings";
 
 export default function SuccessScreen(){
 
@@ -37,13 +38,13 @@ return(
 />
 
 <Text style={[styles.title, fontsLoaded && styles.titleRoboto]}>
-Mitigation Completed
+{S.success.title}
 </Text>
 
 <Text style={styles.subtitle}>
 {isIsolate
-    ? "The host has been isolated from the network."
-    : "The malicious IP has been successfully blocked."}
+    ? S.success.subtitleIsolate
+    : S.success.subtitleBlock}
 </Text>
 
 <View style={styles.card}>
@@ -51,7 +52,7 @@ Mitigation Completed
 {isIsolate ? null : (
 <>
 <Text style={styles.label}>
-Blocked IP
+{S.success.blockedIp}
 </Text>
 
 <Text style={[styles.value, fontsLoaded && styles.valueRoboto]}>
@@ -61,7 +62,7 @@ Blocked IP
 )}
 
 <Text style={styles.label}>
-{isIsolate ? "Isolated Host" : "Target"}
+{isIsolate ? S.success.isolatedHost : S.fields.target}
 </Text>
 
 <Text style={[styles.value, fontsLoaded && styles.valueRoboto]}>
@@ -69,11 +70,11 @@ Blocked IP
 </Text>
 
 <Text style={styles.label}>
-Execution Time
+{S.success.elapsed}
 </Text>
 
 <Text style={[styles.value, fontsLoaded && styles.valueRoboto]}>
-{seconds} seconds
+{S.success.seconds(seconds)}
 </Text>
 
 </View>
@@ -84,7 +85,7 @@ onPress={()=>router.replace("/dashboard")}
 >
 
 <Text style={styles.buttonText}>
-Back to Dashboard
+{S.success.backHome}
 </Text>
 
 </TouchableOpacity>
@@ -103,6 +104,7 @@ const styles = StyleSheet.create({
   container:{
     flex:1,
     backgroundColor:Colors.background,
+    paddingTop:60,
   },
 
   scroll:{
