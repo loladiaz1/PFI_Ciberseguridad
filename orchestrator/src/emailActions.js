@@ -27,10 +27,11 @@ async function quarantineEmails(incident, messageIds) {
   const emails = await emailsOf(incident.id, ["pending", "restored"], messageIds);
   if (emails.length === 0) throw new Error("No hay correos pendientes de cuarentena en este incidente");
 
+  const byMessage = await mailProvider.quarantine(emails.map((e) => e.messageId));
   const mailboxes = new Set();
   let quarantined = 0;
   for (const email of emails) {
-    const found = await mailProvider.quarantine(email.messageId);
+    const found = byMessage[email.messageId] ?? [];
     if (found.length === 0) continue;
     found.forEach((m) => mailboxes.add(m));
     quarantined += 1;
@@ -51,10 +52,10 @@ async function restoreEmails(incident, messageIds) {
   const emails = await emailsOf(incident.id, ["quarantined"], messageIds, { withCandidates: true });
   if (emails.length === 0) throw new Error("No hay correos en cuarentena en este incidente");
 
+  const byMessage = await mailProvider.restore(emails.map((e) => e.messageId));
   const mailboxes = new Set();
   for (const email of emails) {
-    const found = await mailProvider.restore(email.messageId);
-    found.forEach((m) => mailboxes.add(m));
+    (byMessage[email.messageId] ?? []).forEach((m) => mailboxes.add(m));
     await prisma.incidentEmail.update({ where: { id: email.id }, data: { status: "restored", restoredAt: new Date() } });
   }
   const remaining = await prisma.incidentEmail.count({ where: { incidentId: incident.id, status: "quarantined" } });

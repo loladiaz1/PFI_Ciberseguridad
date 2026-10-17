@@ -38,6 +38,12 @@ export function EmailCard({ emails, canAct, selected, onToggle, onDismiss, onSea
           <View key={email.id} style={styles.email}>
             <Text style={styles.label}>{S.email.subject}</Text>
             <Text selectable style={styles.value}>{email.subject ?? S.email.noSubject}</Text>
+            {/* Otra variante reportada que se sumo a la campana por sus indicadores. */}
+            {email.matchedBy ? (
+              <Text style={styles.reasons}>
+                {S.email.matchedBy(email.matchedBy.reasons.map((r) => S.email.reason[r.type] ?? r.type))}
+              </Text>
+            ) : null}
 
             <Text style={styles.label}>{S.email.from}</Text>
             <Text selectable style={styles.value}>{email.fromAddress ?? "-"}</Text>

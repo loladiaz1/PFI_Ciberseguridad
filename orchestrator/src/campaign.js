@@ -88,6 +88,30 @@ function matchOf(campaign, message, excluded) {
 
 const asRow = (email) => ({ ...email, urls: JSON.parse(email.urls), attachments: JSON.parse(email.attachments) });
 
+// Indicadores que alcanzan solos (peso 3).
+const STRONG = Object.keys(WEIGHTS).filter((t) => WEIGHTS[t] >= THRESHOLD);
+
+// Campana abierta a la que pertenece un correo reportado con otro Message-ID
+// (otra variante: otro asunto o remitente, misma infraestructura). Solo con
+// un indicador fuerte en comun: un asunto parecido no alcanza para mezclar
+// dos casos. Devuelve { incident, match } (la de mayor puntaje) o null.
+async function findOpenCampaign(report) {
+  const since = new Date(Date.now() - WINDOW_DAYS * DAY_MS);
+  const open = await prisma.incident.findMany({
+    where: { useCase: "CU-03", closedAt: null, lastSeenAt: { gte: since } },
+    include: { emails: { where: { origin: { not: "candidate" } } } },
+  });
+  const excluded = excludedDomains();
+  let best = null;
+  for (const incident of open) {
+    if (incident.emails.length === 0) continue;
+    const match = matchOf(indicatorsOf(incident.emails.map(asRow), excluded), report, excluded);
+    const strong = match.reasons.some((r) => STRONG.includes(r.type));
+    if (strong && match.score >= THRESHOLD && (!best || match.score > best.match.score)) best = { incident, match };
+  }
+  return best;
+}
+
 // Busca y guarda los candidatos nuevos. Devuelve { scanned, found } o null si
 // la integracion con el correo no esta configurada.
 async function searchSimilar(incidentId, actor = null) {
@@ -144,4 +168,4 @@ async function searchSimilar(incidentId, actor = null) {
   return { scanned: messages.size, found };
 }
 
-module.exports = { searchSimilar, indicatorsOf, matchOf, normalizeSubject, excludedDomains, WEIGHTS, THRESHOLD };
+module.exports = { searchSimilar, findOpenCampaign, indicatorsOf, matchOf, normalizeSubject, excludedDomains, WEIGHTS, THRESHOLD };

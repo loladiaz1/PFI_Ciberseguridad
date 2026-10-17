@@ -16,6 +16,8 @@ const mailProvider = require("../src/mailProvider");
 const { enrichUrl, enrichFile } = require("../src/enrichment");
 const { parseReport, ingestReport, pollReports, startReportPolling } = require("../src/email");
 const { backfillUseCases } = require("../src/normalize");
+// El proveedor devuelve { messageId: [buzones] }: todos encontrados en estos buzones.
+const foundIn = (boxes) => async (ids) => Object.fromEntries(ids.map((id) => [id, boxes]));
 const { adminToken, tokenFor } = require("./helpers");
 
 const RAW_REPORT = fs.readFileSync(path.join(__dirname, "..", "mocks", "phishing_report.eml"));
@@ -41,11 +43,22 @@ beforeEach(() => {
   enrichFile.mockResolvedValue(null);
 });
 
-// Un reporte con Message-ID propio (cada test, su propia campana).
+// Un reporte de una campana propia: Message-ID e indicadores unicos (si no,
+// cada reporte se sumaria a la campana abierta del anterior, src/campaign.js).
 async function report(overrides = {}) {
   const parsed = await parseReport(RAW_REPORT, new Date());
   messageCounter += 1;
-  return { ...parsed, messageId: `<campana-${messageCounter}@test>`, ...overrides };
+  const n = String(messageCounter).padStart(8, "0");
+  return {
+    ...parsed,
+    messageId: `<campana-${messageCounter}@test>`,
+    attachments: parsed.attachments.map((a) => ({ ...a, sha256: a.sha256.slice(0, 56) + n })),
+    urls: [`http://campana-${messageCounter}.test/pagar`],
+    replyTo: `cobros@campana-${messageCounter}.test`,
+    fromAddress: `facturacion@campana-${messageCounter}.test`,
+    sendingIp: null,
+    ...overrides,
+  };
 }
 
 const post = (url, body) => request(app).post(url).set("Authorization", `Bearer ${token}`).send(body);
@@ -137,7 +150,7 @@ describe("ingesta", () => {
     const weak = await ingestReport(await report());
     const medium = await prisma.incident.findUnique({ where: { id: weak.incident.id }, include: { emails: true } });
     expect(medium.severity).toBe(6);
-    expect(JSON.parse(medium.emails[0].urls)[0]).toEqual({ url: "http://malware.testing.google.test/testing/malware/", vtMalicious: 1 });
+    expect(JSON.parse(medium.emails[0].urls)[0]).toEqual({ url: expect.stringMatching(/^http:\/\/campana-\d+\.test\/pagar$/), vtMalicious: 1 });
   });
 
   test("respeta el limite de consultas a VirusTotal por correo", async () => {
@@ -200,7 +213,7 @@ describe("cuarentena y restauracion", () => {
 
   test("pone en cuarentena el correo en todos los buzones donde esta", async () => {
     const incident = await campaign();
-    mailProvider.quarantine.mockResolvedValue([ALICE, BOB]);
+    mailProvider.quarantine.mockImplementation(foundIn([ALICE, BOB]));
 
     const resp = await post(`/api/v1/incidents/${incident.id}/actions/quarantine-email`);
     expect(resp.status).toBe(200);
@@ -218,15 +231,15 @@ describe("cuarentena y restauracion", () => {
 
   test("restaura, y se puede volver a poner en cuarentena sin perder la primera hora", async () => {
     const incident = await campaign();
-    mailProvider.quarantine.mockResolvedValue([ALICE]);
+    mailProvider.quarantine.mockImplementation(foundIn([ALICE]));
     await post(`/api/v1/incidents/${incident.id}/actions/quarantine-email`);
     const first = (await prisma.incident.findUnique({ where: { id: incident.id } })).quarantinedAt;
 
-    mailProvider.restore.mockResolvedValue([ALICE]);
+    mailProvider.restore.mockImplementation(foundIn([ALICE]));
     const restored = await post(`/api/v1/incidents/${incident.id}/actions/restore-email`);
     expect(restored.status).toBe(200);
     expect(restored.body).toMatchObject({ status: "restored", emails: 1, mailboxes: 1, remaining: 0 });
-    expect(mailProvider.restore).toHaveBeenCalledWith(expect.stringMatching(/^<campana-/));
+    expect(mailProvider.restore).toHaveBeenCalledWith([expect.stringMatching(/^<campana-/)]);
 
     const again = await post(`/api/v1/incidents/${incident.id}/actions/quarantine-email`);
     expect(again.status).toBe(200);
@@ -236,7 +249,7 @@ describe("cuarentena y restauracion", () => {
   test("acciona solo sobre los correos elegidos (messageIds)", async () => {
     const incident = await campaign();
     const email = await prisma.incidentEmail.findFirst({ where: { incidentId: incident.id } });
-    mailProvider.quarantine.mockResolvedValue([ALICE]);
+    mailProvider.quarantine.mockImplementation(foundIn([ALICE]));
 
     const other = await post(`/api/v1/incidents/${incident.id}/actions/quarantine-email`, { messageIds: [email.id + 100000] });
     expect(other.status).toBe(502);
@@ -251,20 +264,20 @@ describe("cuarentena y restauracion", () => {
     const { incident } = await ingestReport(r);
     // Segundo correo de la misma campana (lo que aportara la busqueda de similares).
     const second = await prisma.incidentEmail.create({ data: { incidentId: incident.id, messageId: "<variante@test>", origin: "candidate" } });
-    mailProvider.quarantine.mockResolvedValue([ALICE]);
+    mailProvider.quarantine.mockImplementation(foundIn([ALICE]));
     // Sin elegirlo, el candidato no entra en la cuarentena.
     await post(`/api/v1/incidents/${incident.id}/actions/quarantine-email`);
     expect((await prisma.incidentEmail.findUnique({ where: { id: second.id } })).status).toBe("pending");
     await post(`/api/v1/incidents/${incident.id}/actions/quarantine-email`, { messageIds: [second.id] });
 
-    mailProvider.restore.mockResolvedValue([ALICE]);
+    mailProvider.restore.mockImplementation(foundIn([ALICE]));
     const resp = await post(`/api/v1/incidents/${incident.id}/actions/restore-email`, { messageIds: [second.id] });
     expect(resp.body).toMatchObject({ status: "quarantined", remaining: 1 });
   });
 
   test("si el correo no esta en ningun buzon, falla y queda auditado", async () => {
     const incident = await campaign();
-    mailProvider.quarantine.mockResolvedValue([]);
+    mailProvider.quarantine.mockImplementation(foundIn([]));
 
     const resp = await post(`/api/v1/incidents/${incident.id}/actions/quarantine-email`);
     expect(resp.status).toBe(502);
@@ -316,7 +329,7 @@ describe("cuarentena y restauracion", () => {
 describe("integracion con el resto del sistema", () => {
   test("filtros por caso de uso y contencion", async () => {
     const { incident } = await ingestReport(await report());
-    mailProvider.quarantine.mockResolvedValue([ALICE]);
+    mailProvider.quarantine.mockImplementation(foundIn([ALICE]));
     await post(`/api/v1/incidents/${incident.id}/actions/quarantine-email`);
 
     const list = async (q) =>
@@ -326,7 +339,7 @@ describe("integracion con el resto del sistema", () => {
     expect(await list("contained=yes")).toContain(incident.id);
 
     // Restaurado = vuelve a estar sin contener (dashboard: "por atender").
-    mailProvider.restore.mockResolvedValue([ALICE]);
+    mailProvider.restore.mockImplementation(foundIn([ALICE]));
     await post(`/api/v1/incidents/${incident.id}/actions/restore-email`);
     expect(await list("contained=no")).toContain(incident.id);
     expect(await list("contained=yes")).not.toContain(incident.id);
@@ -334,7 +347,7 @@ describe("integracion con el resto del sistema", () => {
 
   test("metricas de CU-03: el reporte es la alerta, la cuarentena la contencion", async () => {
     const { incident } = await ingestReport(await report({ receivedAt: new Date(Date.now() - 30000) }));
-    mailProvider.quarantine.mockResolvedValue([ALICE]);
+    mailProvider.quarantine.mockImplementation(foundIn([ALICE]));
     await post(`/api/v1/incidents/${incident.id}/actions/quarantine-email`);
 
     const resp = await request(app).get("/api/v1/metrics").set("Authorization", `Bearer ${token}`);

@@ -15,6 +15,8 @@ const mailProvider = require("../src/mailProvider");
 const { parseReport } = require("../src/emailParse");
 const { ingestReport } = require("../src/email");
 const { matchOf, indicatorsOf, normalizeSubject, excludedDomains } = require("../src/campaign");
+// El proveedor devuelve { messageId: [buzones] }: todos encontrados en estos buzones.
+const foundIn = (boxes) => async (ids) => Object.fromEntries(ids.map((id) => [id, boxes]));
 const { adminToken } = require("./helpers");
 
 const RAW_REPORT = fs.readFileSync(path.join(__dirname, "..", "mocks", "phishing_report.eml"));
@@ -79,12 +81,17 @@ afterEach(() => {
 // Un incidente CU-03 nuevo (cada test, su propia campana) con lo que
 // devuelva el servidor de correo en la busqueda.
 async function campaignWith(recent) {
+  await closeOpenCampaigns();
   counter += 1;
   mailProvider.listRecent.mockResolvedValue(recent);
   const report = await parseReport(RAW_REPORT, new Date());
   const { incident } = await ingestReport({ ...report, messageId: `<original-${counter}@proveedor-pagos.test>` });
   return { incident, report: { ...report, messageId: `<original-${counter}@proveedor-pagos.test>` } };
 }
+
+// Todos los tests usan el mismo correo de ejemplo: se cierran las campanas
+// abiertas para que cada uno arranque la suya.
+const closeOpenCampaigns = () => prisma.incident.updateMany({ where: { useCase: "CU-03", closedAt: null }, data: { closedAt: new Date() } });
 
 const emailsOf = (incidentId) => prisma.incidentEmail.findMany({ where: { incidentId }, orderBy: { id: "asc" } });
 const post = (url, body) => request(app).post(url).set("Authorization", `Bearer ${token}`).send(body);
@@ -171,18 +178,18 @@ describe("busqueda en los buzones", () => {
       { mailbox: "bob@lab", raw: mime({ id: "variante-q@x.test", from: "a@b.test", subject: "Pago", eicar: true }) },
     ]);
     const [reported, candidate] = await emailsOf(incident.id);
-    mailProvider.quarantine.mockResolvedValue(["bob@lab"]);
+    mailProvider.quarantine.mockImplementation(foundIn(["bob@lab"]));
 
     await post(`/api/v1/incidents/${incident.id}/actions/quarantine-email`);
     expect(mailProvider.quarantine).toHaveBeenCalledTimes(1);
-    expect(mailProvider.quarantine).toHaveBeenCalledWith(reported.messageId);
+    expect(mailProvider.quarantine).toHaveBeenCalledWith([reported.messageId]);
 
     const both = await post(`/api/v1/incidents/${incident.id}/actions/quarantine-email`, { messageIds: [candidate.id] });
     expect(both.status).toBe(200);
     expect((await prisma.incidentEmail.findUnique({ where: { id: candidate.id } })).status).toBe("quarantined");
 
     // Restaurar sin elegir devuelve todo, candidatos incluidos.
-    mailProvider.restore.mockResolvedValue(["bob@lab"]);
+    mailProvider.restore.mockImplementation(foundIn(["bob@lab"]));
     const restored = await post(`/api/v1/incidents/${incident.id}/actions/restore-email`);
     expect(restored.body).toMatchObject({ emails: 2, remaining: 0, status: "restored" });
   });
@@ -236,8 +243,57 @@ describe("busqueda en los buzones", () => {
   test("si falla la busqueda automatica, el incidente se crea igual", async () => {
     jest.spyOn(console, "error").mockImplementation(() => {});
     mailProvider.listRecent.mockRejectedValue(new Error("IMAP caido"));
+    await closeOpenCampaigns();
     const report = await parseReport(RAW_REPORT, new Date());
     const { created } = await ingestReport({ ...report, messageId: "<falla-busqueda@test>" });
     expect(created).toBe(true);
+  });
+});
+
+describe("reportes de otras variantes de la campana", () => {
+  test("otro Message-ID con el mismo adjunto se suma a la campana abierta, no abre otro caso", async () => {
+    const { incident, report } = await campaignWith([]);
+    const variant = {
+      ...report,
+      messageId: "<variante-reportada@x.test>",
+      reporter: "bob@lab.micro-soar.internal",
+      subject: "Comprobante de transferencia",
+      fromAddress: "tesoreria@otro.test",
+      replyTo: null,
+      sendingIp: null,
+      urls: [],
+    };
+
+    const { incident: grouped, created } = await ingestReport(variant);
+    expect(created).toBe(false);
+    expect(grouped.id).toBe(incident.id);
+    expect(grouped.alertCount).toBe(2);
+
+    const emails = await emailsOf(incident.id);
+    expect(emails).toHaveLength(2);
+    expect(emails[1]).toMatchObject({ origin: "reported", subject: "Comprobante de transferencia", reportedBy: '["bob@lab.micro-soar.internal"]' });
+    expect(JSON.parse(emails[1].matchedBy).reasons).toEqual([{ type: "attachment", value: report.attachments[0].sha256 }]);
+    const audit = await prisma.auditEvent.findFirst({ where: { incidentId: incident.id, type: "alert_grouped" } });
+    expect(audit.detail).toMatch(/Otro correo de la campaña reportado por bob@lab.micro-soar.internal: "Comprobante de transferencia"/);
+
+    // Sin remitente ni asunto tambien se suma (y queda registrado igual).
+    const anonymous = await ingestReport({ ...variant, messageId: "<variante-2@x.test>", reporter: null, subject: null });
+    expect(anonymous.incident.id).toBe(incident.id);
+  });
+
+  test("solo un asunto parecido no alcanza para mezclar casos", async () => {
+    const { incident, report } = await campaignWith([]);
+    const unrelated = {
+      ...report,
+      messageId: "<otro-caso@y.test>",
+      fromAddress: "otro@y.test",
+      replyTo: null,
+      sendingIp: null,
+      urls: [],
+      attachments: [],
+    };
+    const { incident: other, created } = await ingestReport(unrelated);
+    expect(created).toBe(true);
+    expect(other.id).not.toBe(incident.id);
   });
 });
