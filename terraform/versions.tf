@@ -19,5 +19,10 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 5.0"
     }
+    # Claves del mail server de laboratorio (mail.tf).
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.6"
+    }
   }
 }

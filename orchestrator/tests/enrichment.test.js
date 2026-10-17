@@ -103,3 +103,38 @@ test("si la API responde con error, no rompe: devuelve null para esa fuente", as
 
   expect(result).toEqual({ vt: null, abuseipdb: null });
 });
+
+describe("reputacion de URLs y archivos (CU-03)", () => {
+  const { enrichUrl, enrichFile } = require("../src/enrichment");
+
+  test("sin API key de VT no consulta", async () => {
+    delete process.env.VT_API_KEY;
+    expect(await enrichUrl("http://sin-key.test/")).toBeNull();
+    expect(axios.get).not.toHaveBeenCalled();
+  });
+
+  test("consulta la URL por su base64url y el archivo por su hash, con cache", async () => {
+    process.env.VT_API_KEY = "fake-vt-key";
+    axios.get.mockResolvedValue({ status: 200, data: { data: { attributes: { last_analysis_stats: { malicious: 7 } } } } });
+
+    expect(await enrichUrl("http://phish.test/login")).toBe(7);
+    expect(axios.get.mock.calls[0][0]).toBe(
+      `https://www.virustotal.com/api/v3/urls/${Buffer.from("http://phish.test/login").toString("base64url")}`
+    );
+    expect(await enrichFile("abc123")).toBe(7);
+    expect(axios.get.mock.calls[1][0]).toBe("https://www.virustotal.com/api/v3/files/abc123");
+
+    await enrichUrl("http://phish.test/login");
+    expect(axios.get).toHaveBeenCalledTimes(2);
+  });
+
+  test("objeto desconocido para VT (404) o error de red: null", async () => {
+    process.env.VT_API_KEY = "fake-vt-key";
+    axios.get.mockResolvedValueOnce({ status: 404, data: {} });
+    expect(await enrichFile("desconocido")).toBeNull();
+
+    jest.spyOn(console, "error").mockImplementation(() => {});
+    axios.get.mockRejectedValueOnce(new Error("timeout"));
+    expect(await enrichUrl("http://caido.test/")).toBeNull();
+  });
+});

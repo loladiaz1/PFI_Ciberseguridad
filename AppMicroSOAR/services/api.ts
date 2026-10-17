@@ -70,6 +70,18 @@ export const isolateIncidentHost = async (id: number): Promise<IsolateHostResult
   return data;
 };
 
+// CU-03: cuarentena / restauracion de los correos de la campana. Sin
+// messageIds, todos los del incidente.
+export const quarantineIncidentEmail = async (id: number, messageIds?: number[]): Promise<{ status: string }> => {
+  const { data } = await http.post(`/api/v1/incidents/${id}/actions/quarantine-email`, messageIds ? { messageIds } : {});
+  return data;
+};
+
+export const restoreIncidentEmail = async (id: number, messageIds?: number[]): Promise<{ status: string }> => {
+  const { data } = await http.post(`/api/v1/incidents/${id}/actions/restore-email`, messageIds ? { messageIds } : {});
+  return data;
+};
+
 export const updateUser = async (fields: { name: string; email: string }): Promise<UserProfile> => {
   const { data } = await http.put<UserProfile>('/api/v1/me', fields);
   return data;

@@ -1,4 +1,4 @@
-import type { AutomationMode, Criticality, IncidentStatus, Role, Verdict } from "@/types";
+import type { AutomationMode, Criticality, IncidentEmail, IncidentStatus, MitigationAction, Role, Verdict } from "@/types";
 
 // Todos los textos de la app, en un solo lugar y agrupados por pantalla.
 // Los textos con datos son funciones. Para sumar otro idioma, este objeto
@@ -43,6 +43,8 @@ export const S = {
     new: "nuevo",
     blocked: "IP bloqueada",
     isolated: "host aislado",
+    quarantined: "correo en cuarentena",
+    restored: "correo restaurado",
   } as Record<IncidentStatus, string>,
   closed: "cerrado",
 
@@ -59,10 +61,67 @@ export const S = {
     critical: "crítica",
   } as Record<Criticality, string>,
 
-  actions: {
-    blockIp: "BLOQUEAR IP",
-    isolateHost: "AISLAR HOST",
-  },
+  // Cada accion en el flujo step-up -> confirmar -> ejecutar -> listo.
+  // target = lo que se muestra como objetivo (IP, host o asunto del correo).
+  flow: {
+    "block-ip": {
+      label: "BLOQUEAR IP",
+      prompt: "Confirmá que sos vos para bloquear esta IP",
+      confirm: "Estás por bloquear la siguiente IP",
+      targetLabel: "IP",
+      warning: "Esta acción actualiza las reglas del firewall y bloquea al atacante.",
+      steps: (target: string) => ["Conectando con Wazuh...", `Bloqueando ${target}...`, "Actualizando el firewall..."],
+      rejected: "Wazuh rechazó el comando de bloqueo. Intentá de nuevo.",
+      done: "La IP maliciosa quedó bloqueada.",
+      doneLabel: "IP bloqueada",
+    },
+    "isolate-host": {
+      label: "AISLAR HOST",
+      prompt: "Confirmá que sos vos para aislar este host",
+      confirm: "Estás por aislar el siguiente host",
+      targetLabel: "Host",
+      warning: "Esta acción corta todo el tráfico de red del host, salvo su canal con el manager de Wazuh.",
+      steps: (target: string) => ["Conectando con Wazuh...", `Aislando ${target}...`, "Cortando el acceso a la red..."],
+      rejected: "Wazuh rechazó el comando de aislamiento. Intentá de nuevo.",
+      done: "El host quedó aislado de la red.",
+      doneLabel: "Host aislado",
+    },
+    "quarantine-email": {
+      label: "PONER EN CUARENTENA",
+      prompt: "Confirmá que sos vos para poner este correo en cuarentena",
+      confirm: "Estás por sacar este correo de todos los buzones donde llegó",
+      targetLabel: "Correo",
+      warning: "El correo se mueve a la carpeta Cuarentena de cada buzón. Si resulta legítimo, se puede restaurar.",
+      steps: () => ["Conectando con el servidor de correo...", "Buscando el correo en los buzones...", "Moviéndolo a cuarentena..."],
+      rejected: "No se pudo poner el correo en cuarentena.",
+      done: "El correo quedó en cuarentena en los buzones donde estaba.",
+      doneLabel: "Correo en cuarentena",
+    },
+    "restore-email": {
+      label: "RESTAURAR CORREO",
+      prompt: "Confirmá que sos vos para restaurar este correo",
+      confirm: "Estás por devolver este correo a la bandeja de entrada",
+      targetLabel: "Correo",
+      warning: "Hacelo solo si el correo es legítimo: vuelve a la bandeja de entrada de todos los destinatarios.",
+      steps: () => ["Conectando con el servidor de correo...", "Devolviendo el correo a las bandejas de entrada..."],
+      rejected: "No se pudo restaurar el correo.",
+      done: "El correo volvió a la bandeja de entrada.",
+      doneLabel: "Correo restaurado",
+    },
+  } as Record<
+    MitigationAction,
+    {
+      label: string;
+      prompt: string;
+      confirm: string;
+      targetLabel: string;
+      warning: string;
+      steps: (target: string) => string[];
+      rejected: string;
+      done: string;
+      doneLabel: string;
+    }
+  >,
 
   verdicts: {
     true_positive: { label: "Verdadero positivo", help: "Un ataque o una infección real." },
@@ -81,6 +140,7 @@ export const S = {
     phishing: "Phishing",
     ip_blocked: "IP bloqueada",
     host_isolated: "Host aislado",
+    email_quarantined: "Correo en cuarentena",
     escalated: "Escalado",
     authorized_activity: "Actividad autorizada",
     test_exercise: "Prueba / ejercicio",
@@ -169,7 +229,7 @@ export const S = {
     any: "Cualquiera",
     status: { open: "Abiertos", closed: "Cerrados", all: "Todos" },
     contained: { yes: "Contenidos", no: "Sin contener", auto: "Automáticos" },
-    useCase: { bruteForce: "Fuerza bruta", malware: "Malware" },
+    useCase: { bruteForce: "Fuerza bruta", malware: "Malware", phishing: "Phishing" },
     minSeverity: { medium: "Media o más", high: "Alta o más", critical: "Crítica" },
     sort: { recent: "Más recientes", severity: "Más severos" },
     panel: {
@@ -212,13 +272,19 @@ export const S = {
     reopenConfirm: "Reabrir",
     reopenError: "No se pudo reabrir el caso",
     alreadyMitigated: "Ya mitigado",
-    mitigatedAt: (blocked: boolean, at: string) =>
-      `${blocked ? "Esta IP se bloqueó" : "Este host se aisló"} el ${formatDate(at)}.`,
+    mitigatedAt: (status: IncidentStatus, at: string) =>
+      `${
+        ({ blocked: "Esta IP se bloqueó", isolated: "Este host se aisló", quarantined: "El correo se puso en cuarentena" } as Partial<
+          Record<IncidentStatus, string>
+        >)[status] ?? "Se contuvo"
+      } el ${formatDate(at)}.`,
     recommendationTitle: "Recomendación automática",
     recommendationBlock: (severity: string, host: string) =>
       `Esta IP disparó una regla de severidad ${severity} contra ${host}.`,
     recommendationIsolate: (severity: string, host: string) =>
       `${host} disparó una regla de severidad ${severity}. Aislarlo corta todo su tráfico de red, salvo el canal con el manager de Wazuh.`,
+    recommendationQuarantine: (severity: string, reporters: number) =>
+      `${reporters === 1 ? "Una persona reportó" : `${reporters} personas reportaron`} este correo (severidad ${severity}). La cuarentena lo saca de todos los buzones donde llegó y se puede deshacer.`,
     recommendedAction: "Acción recomendada:",
     readOnly: "Acceso de solo lectura: un analista tiene que ejecutar esta acción.",
     closeCase: "Cerrar caso",
@@ -228,9 +294,37 @@ export const S = {
     auditLog: (n: number) => `Registro de auditoría (${n})`,
   },
 
+  // CU-03: tarjeta de cada correo de la campana.
+  email: {
+    title: (n: number) => (n > 1 ? `Correos de la campaña (${n})` : "Correo reportado"),
+    subject: "Asunto",
+    noSubject: "(sin asunto)",
+    from: "Remitente",
+    replyTo: "Responder a",
+    replyToDiffers: "distinto del remitente: típico de phishing",
+    reportedBy: "Reportado por",
+    links: "Enlaces",
+    attachments: "Adjuntos",
+    vt: (n: number | null | undefined) =>
+      n == null
+        ? "sin datos de VirusTotal"
+        : n === 1
+        ? "1 motor de VirusTotal lo marca"
+        : n > 1
+        ? `${n} motores de VirusTotal lo marcan`
+        : "VirusTotal: sin detecciones",
+    // Alerta de la linea de tiempo en CU-03 (no hay regla de Wazuh).
+    reportAlert: (grouped: boolean) => `Reporte de un usuario${grouped ? " (agrupado)" : ""}`,
+    status: {
+      pending: "Pendiente",
+      quarantined: "En cuarentena",
+      restored: "Restaurado",
+      dismissed: "Descartado",
+    } as Record<IncidentEmail["status"], string>,
+    mailboxes: (list: string[]) => `Buzones: ${list.join(", ")}`,
+  },
+
   stepUp: {
-    promptIsolate: "Confirmá que sos vos para aislar este host",
-    promptBlock: "Confirmá que sos vos para bloquear esta IP",
     failed: "La autenticación falló. Intentá de nuevo.",
     title: "Autenticación reforzada",
     subtitle: "Autenticate con Face ID o la huella para continuar.",
@@ -239,30 +333,15 @@ export const S = {
 
   confirm: {
     title: "Confirmar acción",
-    subtitleIsolate: "Estás por aislar el siguiente host",
-    subtitleBlock: "Estás por bloquear la siguiente IP",
-    warningIsolate: "Esta acción corta todo el tráfico de red del host, salvo su canal con el manager de Wazuh.",
-    warningBlock: "Esta acción actualiza las reglas del firewall y bloquea al atacante.",
   },
 
   mitigation: {
-    connecting: "Conectando con Wazuh...",
-    isolating: (host: string) => `Aislando ${host}...`,
-    cutting: "Cortando el acceso a la red...",
-    blocking: (ip: string) => `Bloqueando ${ip}...`,
-    updatingFirewall: "Actualizando el firewall...",
-    rejected: (isolate: boolean) =>
-      `Wazuh rechazó el comando de ${isolate ? "aislamiento" : "bloqueo"}. Intentá de nuevo.`,
     executing: "Ejecutando la mitigación...",
     failed: "La mitigación falló",
   },
 
   success: {
     title: "Mitigación completada",
-    subtitleIsolate: "El host quedó aislado de la red.",
-    subtitleBlock: "La IP maliciosa quedó bloqueada.",
-    blockedIp: "IP bloqueada",
-    isolatedHost: "Host aislado",
     elapsed: "Tiempo de ejecución",
     seconds: (s: string) => `${s} segundos`,
     backHome: "Volver al inicio",

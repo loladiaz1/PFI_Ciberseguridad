@@ -11,6 +11,8 @@ export const AUDIT_ICONS: Record<string, keyof typeof MaterialCommunityIcons.gly
   incident_detected: "shield-alert",
   ip_blocked: "shield-lock",
   host_isolated: "lan-disconnect",
+  email_quarantined: "email-lock",
+  email_restored: "email-sync",
   mitigation_failed: "shield-alert-outline",
   account_deleted: "account-remove",
   alert_grouped: "layers-plus",

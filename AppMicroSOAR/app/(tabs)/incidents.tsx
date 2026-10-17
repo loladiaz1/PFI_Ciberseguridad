@@ -29,6 +29,7 @@ const USE_CASE: Option<"useCase">[] = [
     { label: S.incidents.any, value: undefined },
     { label: S.incidents.useCase.bruteForce, value: "CU-01" },
     { label: S.incidents.useCase.malware, value: "CU-02" },
+    { label: S.incidents.useCase.phishing, value: "CU-03" },
 ];
 const SEVERITY: Option<"minSeverity">[] = [
     { label: S.incidents.any, value: undefined },

@@ -11,7 +11,7 @@ import { S } from "@/constants/strings";
 
 export default function ConfirmScreen() {
   const { id, action } = useLocalSearchParams<{ id: string; action: MitigationAction }>();
-  const isIsolate = action === "isolate-host";
+  const flow = S.flow[action];
   const [incident, setIncident] = useState<Incident | null>(null);
 
   useEffect(() => {
@@ -32,6 +32,9 @@ export default function ConfirmScreen() {
   }
 
   const severity = severityLabel(incident.severity);
+  const email = incident.emails?.[0];
+  // Lo que se muestra como objetivo en la ejecucion y en el resultado.
+  const target = email ? (email.subject ?? S.email.noSubject) : action === "block-ip" ? (incident.srcIp ?? "") : incident.hostname;
 
   return (
     <View style={styles.container}>
@@ -46,20 +49,31 @@ export default function ConfirmScreen() {
         </Text>
 
         <Text style={styles.subtitle}>
-          {isIsolate ? S.confirm.subtitleIsolate : S.confirm.subtitleBlock}
+          {flow.confirm}
         </Text>
 
         <View style={styles.card}>
 
-          {incident.srcIp ? (
+          {email ? (
             <>
-              <Text style={styles.label}>{S.fields.attackerIp}</Text>
-              <Text style={styles.value}>{incident.srcIp}</Text>
+              <Text style={styles.label}>{S.email.subject}</Text>
+              <Text style={styles.value}>{target}</Text>
+              <Text style={styles.label}>{S.email.from}</Text>
+              <Text style={styles.value}>{email.fromAddress ?? "-"}</Text>
             </>
-          ) : null}
+          ) : (
+            <>
+              {incident.srcIp ? (
+                <>
+                  <Text style={styles.label}>{S.fields.attackerIp}</Text>
+                  <Text style={styles.value}>{incident.srcIp}</Text>
+                </>
+              ) : null}
 
-          <Text style={styles.label}>{S.fields.target}</Text>
-          <Text style={styles.value}>{incident.hostname}</Text>
+              <Text style={styles.label}>{S.fields.target}</Text>
+              <Text style={styles.value}>{incident.hostname}</Text>
+            </>
+          )}
 
           <Text style={styles.label}>{S.fields.severity}</Text>
           <Text style={[styles.critical, { color: severity.color }]}>{severity.label}</Text>
@@ -67,20 +81,18 @@ export default function ConfirmScreen() {
         </View>
 
         <Text style={styles.warning}>
-          {isIsolate
-            ? S.confirm.warningIsolate
-            : S.confirm.warningBlock}
+          {flow.warning}
         </Text>
 
         <TouchableOpacity
           style={styles.button}
           onPress={() => router.push({
             pathname: "/loading",
-            params: { id: String(incident.id), action, srcIp: incident.srcIp ?? "", hostname: incident.hostname },
+            params: { id: String(incident.id), action, target },
           })}
         >
           <Text style={styles.buttonText}>
-            {isIsolate ? S.actions.isolateHost : S.actions.blockIp}
+            {flow.label}
           </Text>
         </TouchableOpacity>
 

@@ -18,8 +18,13 @@ model Incident {
   agentId         String
   timestamp       String
   status          String    @default("new")
+  // CU-01 | CU-02 | CU-03. Explicito desde CU-03: antes se deducia de srcIp
+  // (con IP = CU-01, sin IP = CU-02); los anteriores se completan al
+  // arrancar (backfillUseCases en src/normalize.js).
+  useCase         String?
   blockedAt       DateTime?
   isolatedAt      DateTime?
+  quarantinedAt   DateTime?
   // Metricas de tiempo de respuesta (RNF-05, ver src/metrics.js). Sin
   // default a proposito: los incidentes anteriores a la medicion quedan en
   // null y no contaminan las metricas con la fecha de la migracion.
@@ -49,6 +54,7 @@ model Incident {
   enrichmentVt        String?
   enrichmentAbuseIpdb String?
   alerts              IncidentAlert[]
+  emails              IncidentEmail[]
 
   @@map("incidents")
 }
@@ -150,4 +156,41 @@ model IncidentAlert {
 
   @@index([incidentId])
   @@map("incident_alerts")
+}
+
+// CU-03: cada correo de una campana de phishing (src/email.js). Un incidente
+// es una campana: el correo reportado y, a futuro, los similares que
+// encuentre la busqueda o que detecte el antispam (Rspamd, via Wazuh). Una
+// fila por Message-ID; mailboxes = buzones donde se lo puso en cuarentena.
+// Solo metadatos e indicadores, nunca el cuerpo del correo (minimizacion de
+// datos, Ley 25.326 art. 4).
+model IncidentEmail {
+  id             Int       @id @default(autoincrement())
+  incident       Incident  @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  incidentId     Int
+  messageId      String
+  fromAddress    String?
+  replyTo        String?
+  subject        String?
+  sentAt         DateTime?
+  sendingIp      String?
+  urls           String    @default("[]") // JSON [{ url, vtMalicious }]
+  attachments    String    @default("[]") // JSON [{ name, sha256, size, vtMalicious }]
+  // reported (lo reporto un usuario) | candidate (busqueda de similares) |
+  // gateway (lo detecto el antispam). Hoy solo "reported".
+  origin         String    @default("reported")
+  // Por que es parte de la campana (busqueda de similares): JSON, null hoy.
+  matchedBy      String?
+  gatewayScore   Float?
+  // pending | quarantined | restored | dismissed
+  status         String    @default("pending")
+  reportedBy     String    @default("[]") // JSON: direcciones de quienes lo reportaron
+  mailboxes      String    @default("[]") // JSON: buzones donde se lo puso en cuarentena
+  firstSeenAt    DateTime  @default(now())
+  quarantinedAt  DateTime?
+  restoredAt     DateTime?
+
+  @@unique([incidentId, messageId])
+  @@index([messageId])
+  @@map("incident_emails")
 }

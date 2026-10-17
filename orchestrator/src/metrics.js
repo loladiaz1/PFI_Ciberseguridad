@@ -2,8 +2,9 @@
 // Por caso de uso, tres tiempos:
 //   - detectionToIngest: alerta de Wazuh (rule timestamp) -> incidente creado
 //     en el orquestador. Mide el pipeline de deteccion (integratord + webhook).
-//   - actionExecution: duracion de la llamada a la API de Wazuh que ejecuta
-//     la accion (bloqueo / aislamiento), medida en el servidor.
+//   - actionExecution: duracion de la llamada que ejecuta la accion (API de
+//     Wazuh para bloqueo / aislamiento, IMAP para la cuarentena del correo),
+//     medida en el servidor. En CU-03 la "alerta" es el reporte del usuario.
 //   - containment: alerta -> incidente mitigado POR UN ANALISTA. Incluye el
 //     tiempo de decision humana; es el numero comparable con los 8-14 min del
 //     acceso remoto tradicional.
@@ -14,6 +15,8 @@
 // Los relojes del manager y del orquestador se sincronizan con Amazon Time
 // Sync (NTP), asi que la diferencia entre instancias es despreciable frente
 // a los valores medidos (segundos).
+
+const { useCaseOf } = require("./normalize");
 
 // Percentil por rango mas cercano: siempre devuelve un valor observado.
 function percentile(sorted, p) {
@@ -32,16 +35,12 @@ function summarize(values) {
   };
 }
 
-function useCaseOf(incident) {
-  return incident.srcIp ? "CU-01" : "CU-02";
-}
-
 function computeMetrics(incidents) {
   const result = {};
-  for (const useCase of ["CU-01", "CU-02"]) {
+  for (const useCase of ["CU-01", "CU-02", "CU-03"]) {
     const group = incidents.filter((i) => useCaseOf(i) === useCase);
     const alertMs = (i) => new Date(i.timestamp).getTime();
-    const mitigatedAt = (i) => i.blockedAt ?? i.isolatedAt;
+    const mitigatedAt = (i) => i.blockedAt ?? i.isolatedAt ?? i.quarantinedAt;
 
     result[useCase] = {
       detectionToIngest: summarize(

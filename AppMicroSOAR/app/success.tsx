@@ -10,13 +10,12 @@ import { S } from "@/constants/strings";
 
 export default function SuccessScreen(){
 
-const { action, srcIp, hostname, elapsedMs } = useLocalSearchParams<{
+const { action, target, elapsedMs } = useLocalSearchParams<{
     action: MitigationAction;
-    srcIp: string;
-    hostname: string;
+    target: string;
     elapsedMs: string;
 }>();
-const isIsolate = action === "isolate-host";
+const flow = S.flow[action];
 
 const [fontsLoaded] = useFonts({ Roboto_600SemiBold, Roboto_700Bold });
 
@@ -42,31 +41,17 @@ return(
 </Text>
 
 <Text style={styles.subtitle}>
-{isIsolate
-    ? S.success.subtitleIsolate
-    : S.success.subtitleBlock}
+{flow.done}
 </Text>
 
 <View style={styles.card}>
 
-{isIsolate ? null : (
-<>
 <Text style={styles.label}>
-{S.success.blockedIp}
+{flow.doneLabel}
 </Text>
 
 <Text style={[styles.value, fontsLoaded && styles.valueRoboto]}>
-{srcIp}
-</Text>
-</>
-)}
-
-<Text style={styles.label}>
-{isIsolate ? S.success.isolatedHost : S.fields.target}
-</Text>
-
-<Text style={[styles.value, fontsLoaded && styles.valueRoboto]}>
-{hostname}
+{target}
 </Text>
 
 <Text style={styles.label}>

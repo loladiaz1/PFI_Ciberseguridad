@@ -4,7 +4,8 @@ import { router, useLocalSearchParams } from "expo-router";
 import Colors from "../styles/colors";
 import BottomNav from "../components/BottomNav";
 import { BrandHeader } from "../components/ui/BrandHeader";
-import { blockIncidentIp, isolateIncidentHost } from "../services/api";
+import { isAxiosError } from "axios";
+import { blockIncidentIp, isolateIncidentHost, quarantineIncidentEmail, restoreIncidentEmail } from "../services/api";
 import type { MitigationAction } from "../types";
 import { S } from "@/constants/strings";
 
@@ -13,21 +14,24 @@ import { S } from "@/constants/strings";
 // unicamente la llamada real a la API resolviendo o rechazando de verdad.
 const STEP_DELAY = 600;
 
+const RUN: Record<MitigationAction, (id: number) => Promise<unknown>> = {
+    "block-ip": blockIncidentIp,
+    "isolate-host": isolateIncidentHost,
+    "quarantine-email": (id) => quarantineIncidentEmail(id),
+    "restore-email": (id) => restoreIncidentEmail(id),
+};
+
 export default function LoadingScreen(){
 
-const { id, action, srcIp, hostname } = useLocalSearchParams<{
+const { id, action, target } = useLocalSearchParams<{
     id: string;
     action: MitigationAction;
-    srcIp: string;
-    hostname: string;
+    target: string;
 }>();
-const isIsolate = action === "isolate-host";
 const [error, setError] = useState("");
 const [visibleStep, setVisibleStep] = useState(0);
 
-const steps = isIsolate
-    ? [S.mitigation.connecting, S.mitigation.isolating(hostname), S.mitigation.cutting]
-    : [S.mitigation.connecting, S.mitigation.blocking(srcIp), S.mitigation.updatingFirewall];
+const steps = S.flow[action].steps(target);
 
 useEffect(() => {
     if (visibleStep >= steps.length - 1) return;
@@ -42,18 +46,19 @@ if (!id) return;
 
 const start = Date.now();
 
-const mitigate = isIsolate ? isolateIncidentHost : blockIncidentIp;
-
-mitigate(Number(id))
+RUN[action](Number(id))
     .then(() => {
         const elapsedMs = Date.now() - start;
         router.replace({
             pathname: "/success",
-            params: { action, srcIp, hostname, elapsedMs: String(elapsedMs) },
+            params: { action, target, elapsedMs: String(elapsedMs) },
         });
     })
-    .catch(() => {
-        setError(S.mitigation.rejected(isIsolate));
+    .catch((err) => {
+        // El motivo del backend (ej. "No se encontró el correo en ningún buzón")
+        // dice mas que un mensaje generico.
+        const detail = isAxiosError(err) ? err.response?.data?.detail : undefined;
+        setError(detail ? `${S.flow[action].rejected} ${detail}` : S.flow[action].rejected);
     });
 
 // eslint-disable-next-line react-hooks/exhaustive-deps -- solo se ejecuta una vez, al montar
@@ -108,6 +113,7 @@ content:{
 flex:1,
 justifyContent:"center",
 alignItems:"center",
+paddingHorizontal:25,
 },
 
 spinner:{
@@ -128,7 +134,9 @@ alignItems:"center",
 
 text:{
 marginTop:10,
-color:Colors.textSecondary
+color:Colors.textSecondary,
+textAlign:"center",
+lineHeight:22
 }
 
 });

@@ -6,6 +6,7 @@ import { isAxiosError } from "axios";
 import Colors from "../styles/colors";
 import BottomNav from "../components/BottomNav";
 import { BrandHeader } from "../components/ui/BrandHeader";
+import { EmailCard } from "../components/EmailCard";
 import { MaterialCommunityIcons, MaterialIcons } from "@expo/vector-icons";
 import { getIncidentById, getIncidentTimeline, reopenIncident } from "../services/api";
 import { VERDICTS, tagsOf } from "../constants/verdicts";
@@ -105,12 +106,14 @@ export default function IncidentDetail() {
     }
 
     const severity = severityLabel(incident.severity);
-    const action: MitigationAction = incident.srcIp ? "block-ip" : "isolate-host";
-    const actionLabel = action === "block-ip" ? S.actions.blockIp : S.actions.isolateHost;
+    const isEmail = incident.useCase === "CU-03";
+    const action: MitigationAction = isEmail ? "quarantine-email" : incident.srcIp ? "block-ip" : "isolate-host";
+    const actionLabel = S.flow[action].label;
     const vt: VtStats | null = incident.enrichmentVt ? JSON.parse(incident.enrichmentVt) : null;
     const abuse: AbuseStats | null = incident.enrichmentAbuseIpdb ? JSON.parse(incident.enrichmentAbuseIpdb) : null;
     const mitigatedAt = incident.status === "blocked" ? incident.blockedAt
         : incident.status === "isolated" ? incident.isolatedAt
+        : incident.status === "quarantined" ? incident.quarantinedAt
         : null;
 
     return (
@@ -123,7 +126,7 @@ export default function IncidentDetail() {
                 {/* El caso se identifica por su numero (el mismo que usa la
                     auditoria, "incident #N"); un caso agrupado tiene varias reglas. */}
                 <Text style={styles.title}>{S.incident.title(incident.id)}</Text>
-                <Text selectable style={styles.rules}>{S.incident.rules(incidentRules(incident))}</Text>
+                {isEmail ? null : <Text selectable style={styles.rules}>{S.incident.rules(incidentRules(incident))}</Text>}
 
                 {incident.ruleDescription ? (
                     <Text selectable style={styles.subtitle}>{incident.ruleDescription}</Text>
@@ -193,6 +196,8 @@ export default function IncidentDetail() {
                         ) : null}
                     </View>
                 ) : null}
+
+                {incident.emails?.length ? <EmailCard emails={incident.emails} /> : null}
 
                 {/* Decision de la automatizacion (orchestrator/src/automation.js) */}
                 {incident.automationDecision && incident.automationDecision !== "none" ? (
@@ -293,14 +298,25 @@ export default function IncidentDetail() {
                 {incident.closedAt ? null : mitigatedAt ? (
                     <View style={styles.recommendation}>
                         <Text style={styles.recTitle}>{S.incident.alreadyMitigated}</Text>
-                        <Text selectable style={styles.recText}>{S.incident.mitigatedAt(incident.status === "blocked", mitigatedAt)}</Text>
+                        <Text selectable style={styles.recText}>{S.incident.mitigatedAt(incident.status, mitigatedAt)}</Text>
+                        {/* La cuarentena es reversible (falso positivo / correo legitimo). */}
+                        {isEmail && canAct ? (
+                            <TouchableOpacity
+                                style={styles.secondaryButton}
+                                onPress={() => router.push({ pathname: "/auth", params: { id: String(incident.id), action: "restore-email" } })}
+                            >
+                                <Text style={styles.secondaryButtonText}>{S.flow["restore-email"].label}</Text>
+                            </TouchableOpacity>
+                        ) : null}
                     </View>
                 ) : (
                     <>
                         <View style={styles.recommendation}>
                             <Text style={styles.recTitle}>{S.incident.recommendationTitle}</Text>
                             <Text selectable style={styles.recText}>
-                                {action === "block-ip"
+                                {action === "quarantine-email"
+                                    ? S.incident.recommendationQuarantine(severity.label.toLowerCase(), incident.alertCount)
+                                    : action === "block-ip"
                                     ? S.incident.recommendationBlock(severity.label.toLowerCase(), incident.hostname)
                                     : S.incident.recommendationIsolate(severity.label.toLowerCase(), incident.hostname)}
                             </Text>
@@ -346,7 +362,9 @@ export default function IncidentDetail() {
                                           <MaterialCommunityIcons name="alert-circle" size={18} color={severityLabel(entry.severity).color} />
                                           <View style={styles.timelineText}>
                                               <Text selectable style={styles.timelineMain}>
-                                                  {S.incident.alertRule(entry.ruleId, entry.grouped)}
+                                                  {entry.ruleId === "user-report"
+                                                      ? S.email.reportAlert(entry.grouped)
+                                                      : S.incident.alertRule(entry.ruleId, entry.grouped)}
                                               </Text>
                                               {entry.detail ? <Text selectable style={styles.timelineSub}>{entry.detail}</Text> : null}
                                               {entry.hashPositives != null ? (

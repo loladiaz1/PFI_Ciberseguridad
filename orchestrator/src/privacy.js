@@ -5,6 +5,9 @@
 //     auditoria (que acciones ejecuto y cuando);
 //   - de terceros: la IP de origen de un ataque (incidentes, enriquecimiento
 //     y detalle de auditoria). Una IP puede identificar a una persona.
+//   - de empleados (CU-03): la direccion de quien reporto un correo y los
+//     buzones donde estaba. Del correo solo se guardan metadatos, nunca el
+//     cuerpo.
 //
 // Dos mecanismos:
 //   1) Supresion (art. 16): al eliminar la cuenta se borra el perfil y el
@@ -13,7 +16,8 @@
 //      seguridad de los datos / RNF-09), pero deja de identificar a la persona.
 //   2) Retencion (art. 4 inc. 7: los datos se destruyen cuando dejan de ser
 //      necesarios): pasado el plazo, las IPs de origen se enmascaran (red /24)
-//      y se descarta el enriquecimiento, que solo describe a esa IP.
+//      y se descarta el enriquecimiento, que solo describe a esa IP; las
+//      direcciones de correo conservan solo el dominio.
 const crypto = require("crypto");
 
 const DEFAULT_RETENTION_DAYS = 90;
@@ -47,6 +51,15 @@ const IPV4_IN_TEXT = /\b(\d{1,3}\.\d{1,3}\.\d{1,3})\.\d{1,3}\b(?!\/)/g;
 function maskIpsInText(text) {
   return text.replace(IPV4_IN_TEXT, "$1.0/24");
 }
+
+// alice@empresa.com -> ***@empresa.com: se sabe de que dominio era, no quien.
+const EMAIL_IN_TEXT = /[^\s@"'<>(),:*]+@([A-Za-z0-9.-]+\.[A-Za-z]{2,})/g;
+
+function maskEmailsInText(text) {
+  return text.replace(EMAIL_IN_TEXT, (match, domain) => (match.startsWith("***@") ? match : `***@${domain}`));
+}
+
+const maskEmailList = (json) => JSON.stringify(JSON.parse(json).map(maskEmailsInText));
 
 // Elimina el perfil y seudonimiza la auditoria del usuario, todo o nada.
 async function deleteAccount(prisma, username) {
@@ -100,17 +113,31 @@ async function applyRetention(prisma, { days = DEFAULT_RETENTION_DAYS, now = new
     await prisma.incidentAlert.update({ where: { id: alert.id }, data: { srcIp: maskIp(alert.srcIp) } });
   }
 
+  // CU-03: quien reporto y en que buzones estaba el correo.
+  const oldEmails = await prisma.incidentEmail.findMany({ where: { firstSeenAt: { lt: cutoff } } });
+  const expiredEmails = oldEmails.filter((e) => maskEmailList(e.reportedBy) !== e.reportedBy || maskEmailList(e.mailboxes) !== e.mailboxes);
+  for (const email of dryRun ? [] : expiredEmails) {
+    await prisma.incidentEmail.update({
+      where: { id: email.id },
+      data: { reportedBy: maskEmailList(email.reportedBy), mailboxes: maskEmailList(email.mailboxes) },
+    });
+  }
+  const reportAlerts = await prisma.incidentAlert.findMany({ where: { detail: { contains: "@" } }, select: { id: true, detail: true, timestamp: true } });
+  for (const alert of dryRun ? [] : reportAlerts.filter((a) => new Date(a.timestamp) < cutoff)) {
+    await prisma.incidentAlert.update({ where: { id: alert.id }, data: { detail: maskEmailsInText(alert.detail) } });
+  }
+
   const oldEvents = await prisma.auditEvent.findMany({ where: { createdAt: { lt: cutoff } } });
   let auditMasked = 0;
   for (const event of oldEvents) {
-    const masked = maskIpsInText(event.detail);
+    const masked = maskEmailsInText(maskIpsInText(event.detail));
     if (masked !== event.detail) {
       if (!dryRun) await prisma.auditEvent.update({ where: { id: event.id }, data: { detail: masked } });
       auditMasked += 1;
     }
   }
 
-  return { cutoff, incidentsMasked: expired.length, alertsMasked: expiredAlerts.length, auditMasked };
+  return { cutoff, incidentsMasked: expired.length, alertsMasked: expiredAlerts.length, emailsMasked: expiredEmails.length, auditMasked };
 }
 
 module.exports = {
@@ -118,6 +145,7 @@ module.exports = {
   pseudonymize,
   maskIp,
   maskIpsInText,
+  maskEmailsInText,
   deleteAccount,
   applyRetention,
 };

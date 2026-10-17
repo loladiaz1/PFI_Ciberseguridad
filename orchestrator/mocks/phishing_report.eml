@@ -1,0 +1,44 @@
+Message-Id: <reporte-1@lab.micro-soar.internal>
+From: alice@lab.micro-soar.internal
+To: phishing@lab.micro-soar.internal
+Subject: Posible phishing
+Date: Fri, 17 Oct 2026 14:05:00 +0000
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="REP"
+
+--REP
+Content-Type: text/plain; charset=utf-8
+
+Me llego esto y parece falso.
+
+--REP
+Content-Type: message/rfc822; name="original.eml"
+Content-Disposition: attachment; filename="original.eml"
+
+Received: from relay.proveedor-pagos.test (relay.proveedor-pagos.test [203.0.113.45])
+	by mail.lab.micro-soar.internal (Postfix) with ESMTP id 4F1A2B3C
+	for <alice@lab.micro-soar.internal>; Fri, 17 Oct 2026 14:00:00 +0000 (UTC)
+Message-Id: <factura-1760709600-1234@proveedor-pagos.test>
+From: Facturacion <facturacion@proveedor-pagos.test>
+Reply-To: cobranzas@pagos-urgentes.test
+To: alice@lab.micro-soar.internal, bob@lab.micro-soar.internal
+Subject: Factura vencida - accion requerida
+Date: Fri, 17 Oct 2026 14:00:00 +0000
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="ORIG"
+
+--ORIG
+Content-Type: text/plain; charset=utf-8
+
+Su factura esta vencida. Regularice el pago en http://malware.testing.google.test/testing/malware/ o descargue el adjunto.
+
+--ORIG
+Content-Type: application/octet-stream; name="factura.exe"
+Content-Disposition: attachment; filename="factura.exe"
+Content-Transfer-Encoding: base64
+
+WDVPIVAlQEFQWzRcUFpYNTQoUF4pN0NDKTd9JEVJQ0FSLVNUQU5EQVJELUFOVElWSVJVUy1URVNULUZJTEUhJEgrSCo=
+
+--ORIG--
+
+--REP--

@@ -45,6 +45,7 @@ function normalizeWazuhAlert(alert) {
     severity,
     ruleDescription: ruleDescription ?? null,
     srcIp: srcIp ?? null,
+    useCase: srcIp ? "CU-01" : "CU-02",
     hostname,
     agentId: String(agentId),
     timestamp,
@@ -69,4 +70,18 @@ function isRelevantAlert(alert) {
   return groups.some((g) => RELEVANT_GROUPS.includes(g));
 }
 
-module.exports = { normalizeWazuhAlert, isRelevantAlert, alertDetailOf };
+// Caso de uso del incidente. Los anteriores a la columna useCase se deducen
+// de srcIp, como antes de CU-03 (un correo nunca tiene srcIp).
+function useCaseOf(incident) {
+  return incident.useCase ?? (incident.srcIp ? "CU-01" : "CU-02");
+}
+
+// Completa useCase en los incidentes anteriores a la columna. Idempotente;
+// corre al arrancar el servidor.
+async function backfillUseCases(db) {
+  const a = await db.incident.updateMany({ where: { useCase: null, srcIp: { not: null } }, data: { useCase: "CU-01" } });
+  const b = await db.incident.updateMany({ where: { useCase: null, srcIp: null }, data: { useCase: "CU-02" } });
+  return a.count + b.count;
+}
+
+module.exports = { normalizeWazuhAlert, isRelevantAlert, alertDetailOf, useCaseOf, backfillUseCases };
