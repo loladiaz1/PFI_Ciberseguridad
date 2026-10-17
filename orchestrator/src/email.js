@@ -17,7 +17,7 @@ const { enrichUrl, enrichFile } = require("./enrichment");
 const { runAutomation } = require("./automation");
 const mailProvider = require("./mailProvider");
 const { parseReport } = require("./emailParse");
-const { searchSimilar } = require("./campaign");
+const { searchSimilar, findOpenCampaign } = require("./campaign");
 
 const REPORT_RULE_ID = "user-report";
 // Un reporte sin confirmar es severidad media; si VirusTotal marca una URL o
@@ -59,7 +59,24 @@ async function enrichEmail(incidentId, email) {
   }
 }
 
-// Crea el incidente o suma el reporte al incidente abierto del mismo correo.
+// Correo reportado tal como se guarda en IncidentEmail.
+function emailRecord(report) {
+  return {
+    messageId: report.messageId,
+    fromAddress: report.fromAddress,
+    replyTo: report.replyTo,
+    subject: report.subject,
+    sentAt: report.sentAt,
+    sendingIp: report.sendingIp,
+    urls: JSON.stringify(report.urls),
+    attachments: JSON.stringify(report.attachments),
+    origin: "reported",
+    reportedBy: JSON.stringify(report.reporter ? [report.reporter] : []),
+  };
+}
+
+// Crea el incidente o suma el reporte al incidente abierto del mismo correo
+// (mismo Message-ID) o de la misma campana (indicadores en comun).
 // Devuelve { incident, created }.
 async function ingestReport(report) {
   const now = new Date();
@@ -86,6 +103,29 @@ async function ingestReport(report) {
     return { incident, created: false };
   }
 
+  // Otro Message-ID, pero la misma campana (src/campaign.js): se suma como
+  // otro correo confirmado del incidente abierto, en vez de abrir otro caso.
+  const campaign = await findOpenCampaign(report);
+  if (campaign) {
+    const email = await prisma.incidentEmail.create({
+      data: { incidentId: campaign.incident.id, ...emailRecord(report), matchedBy: JSON.stringify(campaign.match) },
+    });
+    const incident = await prisma.incident.update({
+      where: { id: campaign.incident.id },
+      data: { alertCount: campaign.incident.alertCount + 1, lastSeenAt: now },
+    });
+    await prisma.incidentAlert.create({ data: reportAlert(incident.id, report, incident.severity) });
+    await logAudit(
+      "alert_grouped",
+      `Otro correo de la campaña reportado por ${report.reporter ?? "un usuario"}: "${report.subject ?? "(sin asunto)"}" (incidente #${incident.id})`,
+      null,
+      incident.id
+    );
+    const enrichment = enrichEmail(incident.id, email).catch((err) => console.error("No se pudo enriquecer el correo:", err.message));
+    if (process.env.AUTOMATION_INLINE === "1") await enrichment;
+    return { incident, created: false };
+  }
+
   const incident = await prisma.incident.create({
     data: {
       source: report.source,
@@ -102,20 +142,7 @@ async function ingestReport(report) {
       ingestedAt: now,
       lastSeenAt: now,
       tags: mergeTags([], [USE_CASE_TAG["CU-03"]]),
-      emails: {
-        create: {
-          messageId: report.messageId,
-          fromAddress: report.fromAddress,
-          replyTo: report.replyTo,
-          subject: report.subject,
-          sentAt: report.sentAt,
-          sendingIp: report.sendingIp,
-          urls: JSON.stringify(report.urls),
-          attachments: JSON.stringify(report.attachments),
-          origin: "reported",
-          reportedBy: JSON.stringify(report.reporter ? [report.reporter] : []),
-        },
-      },
+      emails: { create: emailRecord(report) },
     },
     include: { emails: true },
   });

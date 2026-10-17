@@ -66,23 +66,23 @@ test("habilitada solo con host, clave del master y buzon de reportes", () => {
 });
 
 test("entra a cada buzon con el usuario master por IMAPS", async () => {
-  await mailProvider.quarantine("<m1>");
+  await mailProvider.quarantine(["<m1>"]);
   const options = ImapFlow.mock.calls[0][0];
   expect(options).toMatchObject({ host: "10.0.0.9", port: 993, secure: true, auth: { user: "alice@lab*soar", pass: "master-secret" } });
 });
 
 test("cuarentena: mueve el correo a Quarantine en los buzones donde esta", async () => {
-  const found = await mailProvider.quarantine("<m1>");
-  expect(found).toEqual(["alice@lab", "bob@lab"]);
+  const found = await mailProvider.quarantine(["<m1>"]);
+  expect(found).toEqual({ "<m1>": ["alice@lab", "bob@lab"] });
   expect(server["alice@lab"].INBOX.map((m) => m.messageId)).toEqual(["<otro>"]);
   expect(server["alice@lab"].Quarantine.map((m) => m.uid)).toEqual([1]);
   expect(server["bob@lab"].Quarantine).toHaveLength(1);
 });
 
 test("restaurar: lo devuelve a la bandeja de entrada", async () => {
-  await mailProvider.quarantine("<m1>");
-  const found = await mailProvider.restore("<m1>");
-  expect(found).toEqual(["alice@lab", "bob@lab"]);
+  await mailProvider.quarantine(["<m1>"]);
+  const found = await mailProvider.restore(["<m1>"]);
+  expect(found).toEqual({ "<m1>": ["alice@lab", "bob@lab"] });
   expect(server["bob@lab"].INBOX.map((m) => m.uid)).toEqual([7]);
   expect(server["bob@lab"].Quarantine).toEqual([]);
 });
@@ -118,7 +118,7 @@ test("cierra la sesion aunque la operacion falle", async () => {
     client.logout.mockRejectedValue(new Error("ya desconectado"));
     return client;
   });
-  await expect(mailProvider.quarantine("<m1>")).rejects.toThrow("IMAP caido");
+  await expect(mailProvider.quarantine(["<m1>"])).rejects.toThrow("IMAP caido");
   expect(client.logout).toHaveBeenCalled();
 });
 
@@ -144,4 +144,13 @@ test("buzon sin correos desde la fecha: nada que bajar", async () => {
     return client;
   });
   expect(await mailProvider.listRecent(new Date())).toEqual([]);
+});
+
+test("campana de varios correos: una conexion y un solo movimiento por buzon", async () => {
+  const found = await mailProvider.quarantine(["<m1>", "<otro>", "<no-existe>"]);
+  expect(found).toEqual({ "<m1>": ["alice@lab", "bob@lab"], "<otro>": ["alice@lab"], "<no-existe>": [] });
+  // 3 buzones configurados = 3 conexiones, no una por correo y buzon.
+  expect(ImapFlow).toHaveBeenCalledTimes(3);
+  expect(server["alice@lab"].INBOX).toEqual([]);
+  expect(server["alice@lab"].Quarantine.map((m) => m.uid)).toEqual([1, 2]);
 });

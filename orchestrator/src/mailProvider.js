@@ -86,24 +86,29 @@ async function fetchReports(handle) {
   });
 }
 
-// Mueve el correo (por Message-ID) de una carpeta a otra en cada buzon.
-// Devuelve los buzones donde lo encontro.
-async function moveEverywhere(messageId, from, to) {
-  const found = [];
+// Mueve los correos de una campana (por Message-ID) de una carpeta a otra en
+// todos los buzones: UNA conexion por buzon y un solo movimiento con todos los
+// que encuentra (una campana de miles de correos no abre miles de conexiones
+// por buzon). Devuelve { messageId: [buzones donde estaba] }.
+async function moveEverywhere(messageIds, from, to) {
+  const found = Object.fromEntries(messageIds.map((id) => [id, []]));
   for (const mailbox of config().mailboxes) {
-    const moved = await withFolder(mailbox, from, async (client) => {
-      const uids = await client.search({ header: { "message-id": messageId } }, { uid: true });
-      if (!uids || uids.length === 0) return false;
-      await client.messageMove(uids, to, { uid: true });
-      return true;
+    await withFolder(mailbox, from, async (client) => {
+      const uids = [];
+      for (const id of messageIds) {
+        const hits = await client.search({ header: { "message-id": id } }, { uid: true });
+        if (!hits || hits.length === 0) continue;
+        uids.push(...hits);
+        found[id].push(mailbox);
+      }
+      if (uids.length) await client.messageMove(uids, to, { uid: true });
     });
-    if (moved) found.push(mailbox);
   }
   return found;
 }
 
-const quarantine = (messageId) => moveEverywhere(messageId, "INBOX", QUARANTINE);
-const restore = (messageId) => moveEverywhere(messageId, QUARANTINE, "INBOX");
+const quarantine = (messageIds) => moveEverywhere(messageIds, "INBOX", QUARANTINE);
+const restore = (messageIds) => moveEverywhere(messageIds, QUARANTINE, "INBOX");
 
 // Correos recibidos desde "since" en la bandeja de entrada de cada buzon
 // (busqueda de similares, src/campaign.js): [{ mailbox, raw }], hasta

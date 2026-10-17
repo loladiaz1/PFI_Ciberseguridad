@@ -210,8 +210,10 @@ Detalle completo en `CORRECCIONES para 75%.md`; registro en `progress.md` (sesi�
 - [x] **Automatización según contexto** (políticas configurables por el admin, inventario de activos, simulación, exclusiones, modo off) (14/10, PR #13)
 - [ ] Medir la contención automática (2-3 corridas por caso de uso) para comparar con la manual en las Conclusiones
 - [x] CU-03 phishing reportado: mail server de laboratorio, ingesta por IMAP, campaña 1:N, cuarentena / restauración en bloque, app (17/10, probado contra infra real: PR #16)
-- [x] Búsqueda de correos similares de la campaña (IOCs: hash, URL/dominio, Reply-To, IP de envío, remitente, asunto; candidatos que elige el analista) (17/10) — [ ] falta probarla contra infra real (`terraform/send-campaign.sh`)
-- [ ] Rspamd por Wazuh como segunda fuente de detección de CU-03
+- [x] Búsqueda de correos similares de la campaña (IOCs: hash, URL/dominio, Reply-To, IP de envío, remitente, asunto; candidatos que elige el analista) (17/10, probada contra infra real: incidente #1361, PR #19)
+- [x] Escala de campañas, parte 1 (17/10): cuarentena / restauración con una conexión por buzón para toda la campaña; un reporte de otra variante (otro Message-ID, mismo indicador fuerte) se suma a la campaña abierta
+- [ ] E90: Rspamd por Wazuh como segunda fuente de detección de CU-03
+- [ ] E90 — escala de campañas, parte 2: índice de mensajes (message trace desde Rspamd) en vez de recorrer los buzones; cuarentena en segundo plano con avance y reintentos; candidatos agrupados por variante; límite de impacto (aprobación si toca más de N buzones); indicadores confirmados como lista de bloqueo en Rspamd
 - [x] Línea de tiempo del incidente (alertas agrupadas con su archivo / usuario + eventos) y auditoría por categorías y por incidente (14/10, PR #14)
 - [x] Cierre de casos con veredicto, etiquetas y nota; reapertura; filtros y búsqueda de incidentes (16/10)
 - [x] Mejoras de la automatización: IPv6 en la lista de exclusión, cortacircuitos, activos desconocidos = criticidad alta, auditoría antes → después, precisión por política (16/10)
