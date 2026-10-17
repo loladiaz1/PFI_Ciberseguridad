@@ -214,9 +214,10 @@ export const S = {
     role: "Analista SOC",
     threatLevel: "Nivel de amenaza",
     clear: "SIN AMENAZAS",
-    openIncidents: (n: number) => `${n} incidente${n === 1 ? "" : "s"} abierto${n === 1 ? "" : "s"}`,
-    open: "Abiertos",
-    mitigated: "Mitigados",
+    openIncidents: (n: number) => `${n} incidente${n === 1 ? "" : "s"} por atender`,
+    toAttend: "Por atender",
+    toClose: "Por cerrar",
+    closedToday: "Cerrados hoy",
     recent: "Incidentes recientes",
     viewAll: "Ver todos",
   },
@@ -324,13 +325,6 @@ export const S = {
     mailboxes: (list: string[]) => `Buzones: ${list.join(", ")}`,
   },
 
-  stepUp: {
-    failed: "La autenticación falló. Intentá de nuevo.",
-    title: "Autenticación reforzada",
-    subtitle: "Autenticate con Face ID o la huella para continuar.",
-    submit: "Autenticar",
-  },
-
   confirm: {
     title: "Confirmar acción",
   },
@@ -344,7 +338,8 @@ export const S = {
     title: "Mitigación completada",
     elapsed: "Tiempo de ejecución",
     seconds: (s: string) => `${s} segundos`,
-    backHome: "Volver al inicio",
+    closeCase: "Cerrar caso",
+    viewIncident: "Ver incidente",
   },
 
   profile: {

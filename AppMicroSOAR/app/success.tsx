@@ -10,7 +10,8 @@ import { S } from "@/constants/strings";
 
 export default function SuccessScreen(){
 
-const { action, target, elapsedMs } = useLocalSearchParams<{
+const { id, action, target, elapsedMs } = useLocalSearchParams<{
+    id: string;
     action: MitigationAction;
     target: string;
     elapsedMs: string;
@@ -64,13 +65,26 @@ return(
 
 </View>
 
+{/* Contener y cerrar son pasos distintos (el cierre lleva veredicto), pero
+    el cierre queda a un toque. replace: al cerrar, "volver" lleva al incidente. */}
 <TouchableOpacity
 style={styles.button}
-onPress={()=>router.replace("/dashboard")}
+onPress={()=>router.replace({ pathname: "/close", params: { id } })}
 >
 
 <Text style={styles.buttonText}>
-{S.success.backHome}
+{S.success.closeCase}
+</Text>
+
+</TouchableOpacity>
+
+<TouchableOpacity
+style={styles.secondaryButton}
+onPress={()=>router.back()}
+>
+
+<Text style={styles.secondaryButtonText}>
+{S.success.viewIncident}
 </Text>
 
 </TouchableOpacity>
@@ -160,6 +174,20 @@ const styles = StyleSheet.create({
     color:Colors.text,
     fontWeight:"bold",
     fontSize:18
+  },
+
+  secondaryButton:{
+    marginTop:14,
+    padding:16,
+    borderRadius:14,
+    borderWidth:1,
+    borderColor:Colors.border
+  },
+
+  secondaryButtonText:{
+    textAlign:"center",
+    color:Colors.text,
+    fontSize:16
   }
 
 });

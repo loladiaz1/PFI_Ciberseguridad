@@ -303,7 +303,7 @@ export default function IncidentDetail() {
                         {isEmail && canAct ? (
                             <TouchableOpacity
                                 style={styles.secondaryButton}
-                                onPress={() => router.push({ pathname: "/auth", params: { id: String(incident.id), action: "restore-email" } })}
+                                onPress={() => router.push({ pathname: "/confirm", params: { id: String(incident.id), action: "restore-email" } })}
                             >
                                 <Text style={styles.secondaryButtonText}>{S.flow["restore-email"].label}</Text>
                             </TouchableOpacity>
@@ -327,7 +327,7 @@ export default function IncidentDetail() {
                         {canAct ? (
                             <TouchableOpacity
                                 style={styles.button}
-                                onPress={() => router.push({ pathname: "/auth", params: { id: String(incident.id), action } })}
+                                onPress={() => router.push({ pathname: "/confirm", params: { id: String(incident.id), action } })}
                             >
                                 <Text style={styles.buttonText}>{actionLabel}</Text>
                             </TouchableOpacity>

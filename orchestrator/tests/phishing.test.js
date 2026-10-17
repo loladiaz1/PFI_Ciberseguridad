@@ -320,6 +320,12 @@ describe("integracion con el resto del sistema", () => {
     expect(await list("useCase=CU-03")).toContain(incident.id);
     expect(await list("useCase=CU-02")).not.toContain(incident.id);
     expect(await list("contained=yes")).toContain(incident.id);
+
+    // Restaurado = vuelve a estar sin contener (dashboard: "por atender").
+    mailProvider.restore.mockResolvedValue([ALICE]);
+    await post(`/api/v1/incidents/${incident.id}/actions/restore-email`);
+    expect(await list("contained=no")).toContain(incident.id);
+    expect(await list("contained=yes")).not.toContain(incident.id);
   });
 
   test("metricas de CU-03: el reporte es la alerta, la cuarentena la contencion", async () => {
