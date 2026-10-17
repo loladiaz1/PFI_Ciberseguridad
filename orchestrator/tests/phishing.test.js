@@ -75,7 +75,8 @@ describe("parseReport", () => {
   });
 
   test("rechaza un original sin Message-ID", async () => {
-    const raw = RAW_REPORT.toString().replace(/Message-Id: <factura[^>]+>\r\n/, "");
+    // \r?: el .eml tiene CRLF en Windows y LF en el checkout de Linux (CI).
+    const raw = RAW_REPORT.toString().replace(/Message-Id: <factura[^>]+>\r?\n/, "");
     await expect(parseReport(Buffer.from(raw))).rejects.toThrow(/Message-ID/);
   });
 });
