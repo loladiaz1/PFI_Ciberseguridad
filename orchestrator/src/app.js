@@ -1,7 +1,7 @@
 const express = require("express");
 const rateLimit = require("express-rate-limit");
 const { prisma } = require("./db");
-const { normalizeWazuhAlert, isRelevantAlert, alertDetailOf } = require("./normalize");
+const { normalizeWazuhAlert, isRelevantAlert, alertDetailOf, backfillUseCases } = require("./normalize");
 const { enrichIp } = require("./enrichment");
 const {
   ROLES,
@@ -22,6 +22,8 @@ const { findOpenIncident, mergeAlert } = require("./grouping");
 const { VERDICTS, VERDICT_LABELS, TAGS, NOTE_REQUIRED, MIN_NOTE_LENGTH, USE_CASE_TAG, tagsOf, mergeTags, validateClosure } = require("./closure");
 const { CATEGORIES, categoryOf, logAudit, backfillIncidentIds } = require("./audit");
 const { mitigate } = require("./mitigation");
+const { restoreEmails, publicEmail } = require("./emailActions");
+const { startReportPolling } = require("./email");
 const {
   MODES,
   CRITICALITIES,
@@ -150,7 +152,7 @@ app.post("/api/v1/webhook/wazuh", async (req, res) => {
       ingestedAt: now,
       lastSeenAt: now,
       ruleIds: JSON.stringify([fields.ruleId]),
-      tags: mergeTags([], [USE_CASE_TAG[fields.srcIp ? "CU-01" : "CU-02"]]),
+      tags: mergeTags([], [USE_CASE_TAG[fields.useCase]]),
     },
   });
   await prisma.incidentAlert.create({ data: alertRecord(incident.id, fields, req.body) });
@@ -279,14 +281,14 @@ app.delete("/api/v1/users/:username", requireAuth, requireRole("admin"), async (
 // Lista de incidentes con filtros (todos opcionales y combinables):
 //   status=open|closed           contained=yes|no|auto (auto = por la automatizacion)
 //   verdict=true_positive|...    tag=<clave del catalogo>
-//   useCase=CU-01|CU-02          minSeverity=<0-15>
+//   useCase=CU-01|CU-02|CU-03    minSeverity=<0-15>
 //   q=<texto>  (#12 o 12 = numero de incidente; si no, busca en host e IP)
 //   sort=recent (default) | severity
 const INCIDENT_FILTERS = {
   status: ["open", "closed"],
   contained: ["yes", "no", "auto"],
   verdict: VERDICTS,
-  useCase: ["CU-01", "CU-02"],
+  useCase: ["CU-01", "CU-02", "CU-03"],
   sort: ["recent", "severity"],
 };
 
@@ -302,12 +304,11 @@ app.get("/api/v1/incidents", requireAuth, async (req, res) => {
   const and = [];
   if (status === "open") and.push({ closedAt: null });
   if (status === "closed") and.push({ closedAt: { not: null } });
-  if (contained === "yes") and.push({ status: { in: ["blocked", "isolated"] } });
+  if (contained === "yes") and.push({ status: { in: ["blocked", "isolated", "quarantined"] } });
   if (contained === "no") and.push({ status: "new" });
   if (contained === "auto") and.push({ automationDecision: "executed" });
   if (verdict) and.push({ verdict });
-  if (useCase === "CU-01") and.push({ srcIp: { not: null } });
-  if (useCase === "CU-02") and.push({ srcIp: null });
+  if (useCase) and.push({ useCase });
   if (minSeverity !== undefined) and.push({ severity: { gte: Number(minSeverity) || 0 } });
   // tags es JSON ("[\"brute_force\",...]"): se busca la clave entre comillas.
   if (tag) and.push({ tags: { contains: `"${tag}"` } });
@@ -379,17 +380,31 @@ app.post("/api/v1/incidents/:id/reopen", requireAuth, requireRole("admin", "anal
   res.json(updated);
 });
 
+// Incluye los correos de la campana (CU-03; lista vacia en CU-01 / CU-02).
 app.get("/api/v1/incidents/:id", requireAuth, async (req, res) => {
-  const incident = await prisma.incident.findUnique({ where: { id: Number(req.params.id) } });
+  const incident = await prisma.incident.findUnique({
+    where: { id: Number(req.params.id) },
+    include: { emails: { orderBy: { id: "asc" } } },
+  });
   if (!incident) {
     return res.status(404).json({ detail: "Incidente no encontrado" });
   }
-  res.json(incident);
+  res.json({ ...incident, emails: incident.emails.map(publicEmail) });
 });
 
+// messageIds (opcional, CU-03): ids de los correos de la campana sobre los
+// que actuar; sin el, todos. Devuelve el error o null.
+function invalidMessageIds(messageIds) {
+  if (messageIds === undefined) return null;
+  const ok = Array.isArray(messageIds) && messageIds.length > 0 && messageIds.every(Number.isInteger);
+  return ok ? null : "messageIds debe ser una lista de ids de correos del incidente";
+}
+
+const WRONG_USE_CASE = { detail: "La acción no corresponde al caso de uso del incidente" };
+
 // Acciones de contencion: admin y analyst. El auditor es solo lectura.
-// La ejecucion (Wazuh, medicion, auditoria) es la misma que usa la
-// automatizacion: src/mitigation.js.
+// La ejecucion (Wazuh / servidor de correo, medicion, auditoria) es la misma
+// que usa la automatizacion: src/mitigation.js.
 async function manualAction(req, res, actionName) {
   const incident = await prisma.incident.findUnique({ where: { id: Number(req.params.id) } });
   if (!incident) {
@@ -398,14 +413,25 @@ async function manualAction(req, res, actionName) {
   if (actionName === "block-ip" && !incident.srcIp) {
     return res.status(422).json({ detail: "Este incidente no tiene IP de origen para bloquear" });
   }
+  // Un correo solo se pone en cuarentena, y la cuarentena es solo para correos.
+  if ((incident.useCase === "CU-03") !== (actionName === "quarantine-email")) {
+    return res.status(422).json(WRONG_USE_CASE);
+  }
+  const { messageIds } = req.body || {};
+  const invalid = invalidMessageIds(messageIds);
+  if (invalid) return res.status(422).json({ detail: invalid });
 
   let updated;
   try {
-    updated = await mitigate(incident, actionName, req.user.sub);
+    updated = await mitigate(incident, actionName, req.user.sub, { options: { messageIds } });
   } catch (err) {
     // El intento fallido tambien queda en la auditoria: quien lo hizo, sobre
-    // que incidente y por que lo rechazo Wazuh.
-    const target = actionName === "block-ip" ? `el bloqueo de ${incident.srcIp}` : `el aislamiento de ${incident.hostname}`;
+    // que incidente y por que fallo.
+    const target = {
+      "block-ip": `el bloqueo de ${incident.srcIp}`,
+      "isolate-host": `el aislamiento de ${incident.hostname}`,
+      "quarantine-email": "la cuarentena del correo",
+    }[actionName];
     await logAudit("mitigation_failed", `Falló ${target} (incidente #${incident.id}): ${err.message}`, req.user.sub, incident.id);
     return res.status(502).json({ detail: err.message });
   }
@@ -426,6 +452,39 @@ app.post("/api/v1/incidents/:id/actions/block-ip", requireAuth, requireRole("adm
 app.post("/api/v1/incidents/:id/actions/isolate-host", requireAuth, requireRole("admin", "analyst"), (req, res) =>
   manualAction(req, res, "isolate-host")
 );
+
+app.post("/api/v1/incidents/:id/actions/quarantine-email", requireAuth, requireRole("admin", "analyst"), (req, res) =>
+  manualAction(req, res, "quarantine-email")
+);
+
+// Deshacer la cuarentena (CU-03): no es una accion de contencion sino su
+// reverso, asi que no pasa por mitigate(). Si no queda ningun correo en
+// cuarentena, el incidente pasa a "restored".
+app.post("/api/v1/incidents/:id/actions/restore-email", requireAuth, requireRole("admin", "analyst"), async (req, res) => {
+  const incident = await prisma.incident.findUnique({ where: { id: Number(req.params.id) } });
+  if (!incident) return res.status(404).json({ detail: "Incidente no encontrado" });
+  if (incident.useCase !== "CU-03") return res.status(422).json(WRONG_USE_CASE);
+  const { messageIds } = req.body || {};
+  const invalid = invalidMessageIds(messageIds);
+  if (invalid) return res.status(422).json({ detail: invalid });
+
+  let result;
+  try {
+    result = await restoreEmails(incident, messageIds);
+  } catch (err) {
+    await logAudit("mitigation_failed", `Falló la restauración del correo (incidente #${incident.id}): ${err.message}`, req.user.sub, incident.id);
+    return res.status(502).json({ detail: err.message });
+  }
+  const updated =
+    result.remaining === 0 ? await prisma.incident.update({ where: { id: incident.id }, data: { status: "restored" } }) : incident;
+  await logAudit(
+    "email_restored",
+    `Restauración de ${result.emails} correo(s) en ${result.mailboxes} buzón(es) (incidente #${incident.id})`,
+    req.user.sub,
+    incident.id
+  );
+  res.status(200).json({ incidentId: updated.id, status: updated.status, ...result });
+});
 
 // ---------------------------------------------------------------------------
 // Automatizacion: cualquier rol la ve; solo un admin la cambia. Todo cambio
@@ -548,6 +607,8 @@ app.get("/api/v1/metrics", requireAuth, async (_req, res) => {
       ingestedAt: true,
       blockedAt: true,
       isolatedAt: true,
+      quarantinedAt: true,
+      useCase: true,
       actionLatencyMs: true,
       automationDecision: true,
       closedAt: true,
@@ -607,6 +668,8 @@ if (require.main === module) {
   ensureBootstrapAdmin().catch((err) => console.error("No se pudo crear el admin inicial:", err.message));
   ensureAutomationDefaults().catch((err) => console.error("No se pudo cargar la automatizacion:", err.message));
   backfillIncidentIds().catch((err) => console.error("No se pudo vincular la auditoria a los incidentes:", err.message));
+  backfillUseCases(prisma).catch((err) => console.error("No se pudo completar el caso de uso de los incidentes:", err.message));
+  startReportPolling();
   app.listen(port, () => console.log(`Micro-SOAR Orchestrator escuchando en :${port}`));
 }
 

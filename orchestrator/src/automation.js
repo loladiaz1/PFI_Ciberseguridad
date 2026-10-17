@@ -19,13 +19,14 @@ const path = require("path");
 const { prisma } = require("./db");
 const { logAudit } = require("./audit");
 const { mitigate } = require("./mitigation");
+const { useCaseOf } = require("./normalize");
 
 const DEFAULTS_PATH = path.join(__dirname, "..", "config", "automation.defaults.json");
 const MODES = ["off", "simulate", "active"];
 const CRITICALITIES = ["low", "medium", "high", "critical"];
 const ACTOR = "automation";
 // Texto de cada accion en la auditoria y en los motivos.
-const ACTION_LABELS = { "block-ip": "bloqueo de IP", "isolate-host": "aislamiento del host" };
+const ACTION_LABELS = { "block-ip": "bloqueo de IP", "isolate-host": "aislamiento del host", "quarantine-email": "cuarentena del correo" };
 
 function loadDefaults() {
   return JSON.parse(fs.readFileSync(DEFAULTS_PATH, "utf8"));
@@ -152,7 +153,7 @@ function contextOf(incident, asset, defaultCriticality) {
   const abuse = incident.enrichmentAbuseIpdb ? JSON.parse(incident.enrichmentAbuseIpdb) : null;
   const vt = incident.enrichmentVt ? JSON.parse(incident.enrichmentVt) : null;
   return {
-    useCase: incident.srcIp ? "CU-01" : "CU-02",
+    useCase: useCaseOf(incident),
     severity: incident.severity,
     abuseScore: abuse?.abuseConfidenceScore ?? null,
     country: abuse?.countryCode ?? null,
@@ -251,7 +252,7 @@ async function runAutomation(incidentId) {
     // cientos de IPs o aislar media red sin que una persona lo vea.
     const since = new Date(Date.now() - settings.windowMinutes * 60 * 1000);
     const recent = await prisma.auditEvent.count({
-      where: { actor: ACTOR, type: { in: ["ip_blocked", "host_isolated"] }, createdAt: { gte: since } },
+      where: { actor: ACTOR, type: { in: ["ip_blocked", "host_isolated", "email_quarantined"] }, createdAt: { gte: since } },
     });
     if (recent >= settings.maxActions) {
       await prisma.automationSettings.update({ where: { id: 1 }, data: { mode: "simulate", updatedBy: ACTOR } });

@@ -18,6 +18,7 @@ const TAGS = {
   phishing: "Phishing",
   ip_blocked: "IP bloqueada",
   host_isolated: "Host aislado",
+  email_quarantined: "Correo en cuarentena",
   escalated: "Escalado",
   authorized_activity: "Actividad autorizada",
   test_exercise: "Prueba / ejercicio",
@@ -34,8 +35,8 @@ const VERDICT_LABELS = {
 
 // Etiquetas que pone el sistema: por caso de uso al crear el incidente, y
 // por accion al contener (la ponga el analista o la automatizacion).
-const USE_CASE_TAG = { "CU-01": "brute_force", "CU-02": "malware" };
-const ACTION_TAG = { "block-ip": "ip_blocked", "isolate-host": "host_isolated" };
+const USE_CASE_TAG = { "CU-01": "brute_force", "CU-02": "malware", "CU-03": "phishing" };
+const ACTION_TAG = { "block-ip": "ip_blocked", "isolate-host": "host_isolated", "quarantine-email": "email_quarantined" };
 
 function tagsOf(incident) {
   return incident?.tags ? JSON.parse(incident.tags) : [];

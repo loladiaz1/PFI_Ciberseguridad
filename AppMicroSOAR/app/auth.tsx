@@ -25,9 +25,7 @@ const authenticate = async () => {
     }
 
     const result = await LocalAuthentication.authenticateAsync({
-        promptMessage: action === "isolate-host"
-            ? S.stepUp.promptIsolate
-            : S.stepUp.promptBlock,
+        promptMessage: S.flow[action].prompt,
     });
 
     if (result.success) {

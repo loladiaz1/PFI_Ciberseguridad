@@ -91,3 +91,15 @@ variable "tailscale_authkey" {
   default     = ""
   sensitive   = true
 }
+
+variable "mail_instance_type" {
+  description = "EC2 instance type del mail server de laboratorio (CU-03). Postfix + Dovecot + agente Wazuh entran en 1 GB; Rspamd (futuro) tambien, sin ClamAV."
+  type        = string
+  default     = "t3.micro"
+}
+
+variable "mail_domain" {
+  description = "Dominio ficticio del laboratorio de correo (CU-03). No resuelve en internet: el correo solo circula dentro del mail server."
+  type        = string
+  default     = "lab.micro-soar.internal"
+}

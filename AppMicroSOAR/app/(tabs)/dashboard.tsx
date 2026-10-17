@@ -47,7 +47,7 @@ const recent = incidents.slice(0, 3);
 // (Un falso positivo cerrado nunca se contiene, pero ya no esta abierto.)
 const openIncidents = incidents.filter((i) => !i.closedAt && i.status === "new");
 const openCount = openIncidents.length;
-const mitigatedCount = incidents.filter((i) => i.status === "blocked" || i.status === "isolated").length;
+const mitigatedCount = incidents.filter((i) => i.status === "blocked" || i.status === "isolated" || i.status === "quarantined").length;
 
 const highestOpenSeverity = openIncidents.reduce(
     (max, i) => Math.max(max, i.severity),

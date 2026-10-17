@@ -146,6 +146,33 @@ describe("politica de retencion", () => {
     expect(again.incidentsMasked).toBe(0);
   });
 
+  test("CU-03: de quien reporto y de los buzones queda solo el dominio", async () => {
+    const incident = await prisma.incident.create({
+      data: { source: "user_report", useCase: "CU-03", ruleId: "user-report", severity: 6, hostname: "mail", agentId: "mail", timestamp: "2026-06-01T10:00:00.000Z" },
+    });
+    const email = await prisma.incidentEmail.create({
+      data: {
+        incidentId: incident.id, messageId: "<viejo@test>", fromAddress: "atacante@malo.test", firstSeenAt: new Date("2026-06-01T10:00:00Z"),
+        reportedBy: '["alice@empresa.com"]', mailboxes: '["alice@empresa.com","bob@empresa.com"]',
+      },
+    });
+    const alert = await prisma.incidentAlert.create({
+      data: { incidentId: incident.id, ruleId: "user-report", severity: 6, timestamp: "2026-06-01T10:00:00.000Z", detail: "Reportado por alice@empresa.com" },
+    });
+
+    const dry = await applyRetention(prisma, { days: 90, now: NOW, dryRun: true });
+    expect(dry.emailsMasked).toBeGreaterThanOrEqual(1);
+    await applyRetention(prisma, { days: 90, now: NOW });
+
+    const e = await prisma.incidentEmail.findUnique({ where: { id: email.id } });
+    expect(JSON.parse(e.reportedBy)).toEqual(["***@empresa.com"]);
+    expect(JSON.parse(e.mailboxes)).toEqual(["***@empresa.com", "***@empresa.com"]);
+    // El remitente del ataque es un indicador, no un dato del empleado: queda.
+    expect(e.fromAddress).toBe("atacante@malo.test");
+    expect((await prisma.incidentAlert.findUnique({ where: { id: alert.id } })).detail).toBe("Reportado por ***@empresa.com");
+    expect((await applyRetention(prisma, { days: 90, now: NOW })).emailsMasked).toBe(0);
+  });
+
   test("sin parametros usa el plazo por defecto (90 dias)", async () => {
     const r = await applyRetention(prisma, { dryRun: true });
     expect(Date.now() - r.cutoff.getTime()).toBeGreaterThanOrEqual(90 * 24 * 60 * 60 * 1000 - 1000);

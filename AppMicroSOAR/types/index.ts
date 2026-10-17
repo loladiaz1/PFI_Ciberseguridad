@@ -1,8 +1,30 @@
-export type IncidentStatus = 'new' | 'blocked' | 'isolated';
+export type IncidentStatus = 'new' | 'blocked' | 'isolated' | 'quarantined' | 'restored';
+
+export type UseCase = 'CU-01' | 'CU-02' | 'CU-03';
 
 // CU-01 (fuerza bruta, hay IP atacante) -> block-ip.
 // CU-02 (malware en el host, sin IP atacante) -> isolate-host.
-export type MitigationAction = 'block-ip' | 'isolate-host';
+// CU-03 (phishing reportado) -> quarantine-email, y su reverso restore-email.
+export type MitigationAction = 'block-ip' | 'isolate-host' | 'quarantine-email' | 'restore-email';
+
+// Un correo de la campana de phishing (orchestrator/src/emailActions.js).
+export interface IncidentEmail {
+  id: number;
+  messageId: string;
+  fromAddress: string | null;
+  replyTo: string | null;
+  subject: string | null;
+  sentAt: string | null;
+  sendingIp: string | null;
+  urls: { url: string; vtMalicious?: number | null }[];
+  attachments: { name: string | null; sha256: string; size: number; vtMalicious?: number | null }[];
+  origin: 'reported' | 'candidate' | 'gateway';
+  status: 'pending' | 'quarantined' | 'restored' | 'dismissed';
+  reportedBy: string[];
+  mailboxes: string[];
+  quarantinedAt: string | null;
+  restoredAt: string | null;
+}
 
 export interface Incident {
   id: number;
@@ -15,8 +37,12 @@ export interface Incident {
   agentId: string;
   timestamp: string;
   status: IncidentStatus;
+  useCase: UseCase | null;
   blockedAt: string | null;
   isolatedAt: string | null;
+  quarantinedAt: string | null;
+  // Solo en el detalle (GET /incidents/:id); vacio fuera de CU-03.
+  emails?: IncidentEmail[];
   // JSON serializado por el backend (orchestrator/src/enrichment.js).
   enrichmentVt: string | null;
   enrichmentAbuseIpdb: string | null;
@@ -50,7 +76,7 @@ export interface IncidentFilters {
   contained?: 'yes' | 'no' | 'auto';
   verdict?: Verdict;
   tag?: string;
-  useCase?: 'CU-01' | 'CU-02';
+  useCase?: UseCase;
   minSeverity?: number;
   q?: string;
   sort?: 'recent' | 'severity';
