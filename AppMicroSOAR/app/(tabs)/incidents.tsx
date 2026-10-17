@@ -1,5 +1,5 @@
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, TextInput } from "react-native";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useFocusEffect } from "@react-navigation/native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
@@ -48,7 +48,15 @@ const SORT: Option<"sort">[] = [
     { label: S.incidents.sort.severity, value: "severity" },
 ];
 
+// Vistas que abre el dashboard (tarjetas por atender / por cerrar / cerrados).
+const VIEWS: Record<string, IncidentFilters> = {
+    toAttend: { status: "open", contained: "no", sort: "recent" },
+    toClose: { status: "open", contained: "yes", sort: "recent" },
+    closed: { status: "closed", sort: "recent" },
+};
+
 export default function IncidentsList() {
+    const { view } = useLocalSearchParams<{ view?: string }>();
     const [incidents, setIncidents] = useState<Incident[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
@@ -57,6 +65,13 @@ export default function IncidentsList() {
     const [search, setSearch] = useState("");
     const [showFilters, setShowFilters] = useState(false);
     const [tagLabels, setTagLabels] = useState<Record<string, string>>({});
+
+    useEffect(() => {
+        if (view && VIEWS[view]) {
+            setSearch("");
+            setFilters(VIEWS[view]);
+        }
+    }, [view]);
 
     useEffect(() => {
         getClosureCatalog().then((c) => setTagLabels(c.tags)).catch(() => setTagLabels({}));

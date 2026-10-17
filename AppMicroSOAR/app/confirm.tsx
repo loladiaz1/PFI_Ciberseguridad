@@ -5,6 +5,7 @@ import Colors from "../styles/colors";
 import BottomNav from "../components/BottomNav";
 import { BrandHeader } from "../components/ui/BrandHeader";
 import { getIncidentById } from "../services/api";
+import { confirmWithBiometrics } from "../services/stepUp";
 import { severityLabel } from "../utils/severity";
 import type { Incident, MitigationAction } from "../types";
 import { S } from "@/constants/strings";
@@ -86,10 +87,13 @@ export default function ConfirmScreen() {
 
         <TouchableOpacity
           style={styles.button}
-          onPress={() => router.push({
-            pathname: "/loading",
-            params: { id: String(incident.id), action, target },
-          })}
+          onPress={async () => {
+            // Step-up: la ventana biometrica del sistema dice que accion se
+            // autoriza. Cancelar o fallar deja al analista en esta pantalla.
+            if (!(await confirmWithBiometrics(flow.prompt))) return;
+            // replace: al terminar, "volver" lleva al incidente, no a confirmar.
+            router.replace({ pathname: "/loading", params: { id: String(incident.id), action, target } });
+          }}
         >
           <Text style={styles.buttonText}>
             {flow.label}

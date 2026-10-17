@@ -43,11 +43,19 @@ useFocusEffect(
 );
 
 const recent = incidents.slice(0, 3);
-// Abiertos = sin cerrar y sin contener: lo que el analista tiene que atender.
-// (Un falso positivo cerrado nunca se contiene, pero ya no esta abierto.)
-const openIncidents = incidents.filter((i) => !i.closedAt && i.status === "new");
+// El ciclo del caso: por atender (sin contener; incluye un correo restaurado)
+// -> por cerrar (contenido, falta el veredicto) -> cerrado.
+const isContained = (i: Incident) => i.status === "blocked" || i.status === "isolated" || i.status === "quarantined";
+const openIncidents = incidents.filter((i) => !i.closedAt && !isContained(i));
 const openCount = openIncidents.length;
-const mitigatedCount = incidents.filter((i) => i.status === "blocked" || i.status === "isolated" || i.status === "quarantined").length;
+const toCloseCount = incidents.filter((i) => !i.closedAt && isContained(i)).length;
+const today = new Date().toDateString();
+const closedTodayCount = incidents.filter((i) => i.closedAt && new Date(i.closedAt).toDateString() === today).length;
+const cards = [
+    { count: openCount, label: S.dashboard.toAttend, view: "toAttend" },
+    { count: toCloseCount, label: S.dashboard.toClose, view: "toClose" },
+    { count: closedTodayCount, label: S.dashboard.closedToday, view: "closed" },
+];
 
 const highestOpenSeverity = openIncidents.reduce(
     (max, i) => Math.max(max, i.severity),
@@ -89,29 +97,23 @@ return(
 
 <View style={styles.row}>
 
-<View style={styles.smallCard}>
+{cards.map((card) => (
+<TouchableOpacity
+key={card.view}
+style={styles.smallCard}
+onPress={()=>router.push({ pathname: "/incidents", params: { view: card.view } })}
+>
 
 <Text style={styles.number}>
-{openCount}
+{card.count}
 </Text>
 
 <Text style={styles.label}>
-{S.dashboard.open}
+{card.label}
 </Text>
 
-</View>
-
-<View style={styles.smallCard}>
-
-<Text style={styles.number}>
-{mitigatedCount}
-</Text>
-
-<Text style={styles.label}>
-{S.dashboard.mitigated}
-</Text>
-
-</View>
+</TouchableOpacity>
+))}
 
 </View>
 
@@ -248,8 +250,9 @@ marginTop:18
 
 smallCard:{
 backgroundColor:Colors.card,
-width:"47%",
-padding:22,
+width:"31%",
+paddingVertical:18,
+paddingHorizontal:6,
 borderRadius:18,
 alignItems:"center"
 },
@@ -262,7 +265,8 @@ fontWeight:"bold"
 
 label:{
 color:Colors.textSecondary,
-marginTop:8
+marginTop:8,
+textAlign:"center"
 },
 
 headerRow:{

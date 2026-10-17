@@ -31,6 +31,9 @@ export default function CloseIncidentScreen() {
       .then(([{ data }, cat]) => {
         setIncident(data ?? null);
         setCatalog(cat);
+        // Si ya se contuvo, lo mas probable es un ataque real: el analista
+        // solo confirma (puede cambiarlo).
+        if (data && ["blocked", "isolated", "quarantined"].includes(data.status)) setVerdict("true_positive");
       })
       .catch(() => Alert.alert(S.common.error, S.close.loadError));
   }, [id]);

@@ -51,7 +51,7 @@ RUN[action](Number(id))
         const elapsedMs = Date.now() - start;
         router.replace({
             pathname: "/success",
-            params: { action, target, elapsedMs: String(elapsedMs) },
+            params: { id, action, target, elapsedMs: String(elapsedMs) },
         });
     })
     .catch((err) => {

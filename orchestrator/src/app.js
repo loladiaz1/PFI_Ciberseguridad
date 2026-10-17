@@ -305,7 +305,8 @@ app.get("/api/v1/incidents", requireAuth, async (req, res) => {
   if (status === "open") and.push({ closedAt: null });
   if (status === "closed") and.push({ closedAt: { not: null } });
   if (contained === "yes") and.push({ status: { in: ["blocked", "isolated", "quarantined"] } });
-  if (contained === "no") and.push({ status: "new" });
+  // "restored": se deshizo la cuarentena, vuelve a estar sin contener.
+  if (contained === "no") and.push({ status: { in: ["new", "restored"] } });
   if (contained === "auto") and.push({ automationDecision: "executed" });
   if (verdict) and.push({ verdict });
   if (useCase) and.push({ useCase });
