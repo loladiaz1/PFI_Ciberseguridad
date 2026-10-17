@@ -323,6 +323,31 @@ export const S = {
       dismissed: "Descartado",
     } as Record<IncidentEmail["status"], string>,
     mailboxes: (list: string[]) => `Buzones: ${list.join(", ")}`,
+    // Busqueda de correos similares de la campana.
+    similarTitle: (n: number) => `Posibles correos de la misma campaña${n ? ` (${n})` : ""}`,
+    noSimilar: "No se encontraron otros correos con los mismos indicadores.",
+    search: "Buscar de nuevo",
+    searching: "Buscando...",
+    searchDone: (found: number, scanned: number) =>
+      found ? `${found} correo(s) nuevo(s) de la campaña entre ${scanned} revisado(s).` : `Ningún correo nuevo entre ${scanned} revisado(s).`,
+    searchError: "No se pudo buscar correos similares",
+    dismiss: "Descartar",
+    dismissTitle: "Descartar correo",
+    dismissBody: "¿No es parte de la campaña? Queda registrado y no se pone en cuarentena.",
+    dismissError: "No se pudo descartar el correo",
+    matchedBy: (reasons: string[]) => `Coincide en: ${reasons.join(" · ")}`,
+    reason: {
+      attachment: "mismo adjunto",
+      url: "mismo enlace",
+      urlDomain: "mismo dominio de enlace",
+      replyTo: "mismo Responder a",
+      sendingIp: "misma IP de envío",
+      from: "mismo remitente",
+      fromDomain: "mismo dominio del remitente",
+      subject: "asunto parecido",
+    } as Record<string, string>,
+    quarantineCount: (n: number) => `PONER EN CUARENTENA (${n})`,
+    count: (n: number) => `${n} correos`,
   },
 
   confirm: {

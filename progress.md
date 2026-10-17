@@ -127,6 +127,15 @@ _(Cambios de rumbo respecto al PLAN, con el motivo. Para defender ante el tribun
 ## Bitácora de sesiones
 _(La más reciente arriba. Formato fijo por entrada.)_
 
+### Sesión 2026-10-17 (tarde) — CU-03: flujo del analista y búsqueda de correos similares
+- **Hecho:**
+  - **Flujo del analista** (PR feature/flujo-analista): confirmar → huella del sistema → ejecutar → "Cerrar caso" desde la pantalla de éxito, con "Verdadero positivo" preelegido si se contuvo (de ~11 toques a 5). Dashboard por atender / por cerrar / cerrados hoy, cada tarjeta abre la lista filtrada. Un correo restaurado vuelve a "sin contener" (`contained=no` incluye `restored`).
+  - **Búsqueda de correos similares** (`src/campaign.js`): de los correos confirmados del incidente salen los indicadores (hash de adjuntos, URL y dominio de enlaces, Reply-To, IP de envío: fuertes, 3 puntos; remitente 2; dominio del remitente y asunto normalizado 1; umbral 3) y se buscan en los buzones correos de los últimos 7 días (`mailProvider.listRecent`). Dominio propio y comunes excluidos (`MAIL_HUNT_EXCLUDE` para sumar). Corre sola al crear el incidente y a pedido (`POST /incidents/:id/search-similar`). Los resultados quedan como **candidatos**: la cuarentena por defecto no los toca, el analista los elige (los de indicador fuerte vienen marcados) o los descarta (`POST /incidents/:id/emails/:emailId/dismiss`, auditado). Si un usuario reporta un candidato, pasa a confirmado. Lectura de correos separada en `src/emailParse.js`.
+  - App: sección "Posibles correos de la misma campaña" con casillas, motivo de cada coincidencia, "Descartar" y "Buscar de nuevo"; el botón de cuarentena muestra cuántos correos entran.
+  - Script de demo `terraform/send-campaign.sh` (se corre por SSM, no está en el `user_data`): dos variantes con otro asunto y remitente + un correo legítimo + `send-phish`.
+  - Tests: **203**.
+- **Próximo paso concreto:** merge → `send-campaign.sh` por SSM → verificar que el incidente trae las dos variantes como candidatos y no el legítimo → cuarentena en bloque desde el celular.
+
 ### Sesión 2026-10-17 — CU-03: phishing reportado por el usuario
 - **Objetivo de la sesión:** implementar el tercer PoC de la propuesta (CU-03), con un diseño que después admita un antispam (Rspamd) y la búsqueda de correos similares de una campaña sin migrar datos ni cambiar la API.
 - **Hecho:**

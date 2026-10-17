@@ -14,19 +14,20 @@ import { S } from "@/constants/strings";
 // unicamente la llamada real a la API resolviendo o rechazando de verdad.
 const STEP_DELAY = 600;
 
-const RUN: Record<MitigationAction, (id: number) => Promise<unknown>> = {
-    "block-ip": blockIncidentIp,
-    "isolate-host": isolateIncidentHost,
-    "quarantine-email": (id) => quarantineIncidentEmail(id),
-    "restore-email": (id) => restoreIncidentEmail(id),
+const RUN: Record<MitigationAction, (id: number, messageIds?: number[]) => Promise<unknown>> = {
+    "block-ip": (id) => blockIncidentIp(id),
+    "isolate-host": (id) => isolateIncidentHost(id),
+    "quarantine-email": quarantineIncidentEmail,
+    "restore-email": restoreIncidentEmail,
 };
 
 export default function LoadingScreen(){
 
-const { id, action, target } = useLocalSearchParams<{
+const { id, action, target, messageIds } = useLocalSearchParams<{
     id: string;
     action: MitigationAction;
     target: string;
+    messageIds?: string;
 }>();
 const [error, setError] = useState("");
 const [visibleStep, setVisibleStep] = useState(0);
@@ -46,7 +47,7 @@ if (!id) return;
 
 const start = Date.now();
 
-RUN[action](Number(id))
+RUN[action](Number(id), messageIds ? messageIds.split(",").map(Number) : undefined)
     .then(() => {
         const elapsedMs = Date.now() - start;
         router.replace({

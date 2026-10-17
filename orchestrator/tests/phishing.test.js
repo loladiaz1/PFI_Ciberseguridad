@@ -36,6 +36,7 @@ afterAll(async () => {
 beforeEach(() => {
   jest.clearAllMocks();
   mailProvider.isEnabled.mockReturnValue(true);
+  mailProvider.listRecent.mockResolvedValue([]);
   enrichUrl.mockResolvedValue(null);
   enrichFile.mockResolvedValue(null);
 });
@@ -251,7 +252,10 @@ describe("cuarentena y restauracion", () => {
     // Segundo correo de la misma campana (lo que aportara la busqueda de similares).
     const second = await prisma.incidentEmail.create({ data: { incidentId: incident.id, messageId: "<variante@test>", origin: "candidate" } });
     mailProvider.quarantine.mockResolvedValue([ALICE]);
+    // Sin elegirlo, el candidato no entra en la cuarentena.
     await post(`/api/v1/incidents/${incident.id}/actions/quarantine-email`);
+    expect((await prisma.incidentEmail.findUnique({ where: { id: second.id } })).status).toBe("pending");
+    await post(`/api/v1/incidents/${incident.id}/actions/quarantine-email`, { messageIds: [second.id] });
 
     mailProvider.restore.mockResolvedValue([ALICE]);
     const resp = await post(`/api/v1/incidents/${incident.id}/actions/restore-email`, { messageIds: [second.id] });

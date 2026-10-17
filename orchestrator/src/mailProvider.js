@@ -1,5 +1,5 @@
 // Integracion con el servidor de correo (CU-03). Es el UNICO archivo que
-// conoce IMAP: el resto del sistema usa estas cuatro funciones. Migrar a
+// conoce IMAP: el resto del sistema usa las funciones que exporta. Migrar a
 // Microsoft 365 o Google Workspace = reescribir este archivo con Graph API
 // (/users/{u}/messages, move) o Gmail API (messages.list q=rfc822msgid:,
 // modify), sin tocar incidentes, app ni automatizacion.
@@ -105,4 +105,25 @@ async function moveEverywhere(messageId, from, to) {
 const quarantine = (messageId) => moveEverywhere(messageId, "INBOX", QUARANTINE);
 const restore = (messageId) => moveEverywhere(messageId, QUARANTINE, "INBOX");
 
-module.exports = { isEnabled, fetchReports, quarantine, restore };
+// Correos recibidos desde "since" en la bandeja de entrada de cada buzon
+// (busqueda de similares, src/campaign.js): [{ mailbox, raw }], hasta
+// MAX_SCAN por buzon (los mas nuevos). En el laboratorio se bajan y se
+// analizan en el orchestrator; en produccion el equivalente es el message
+// trace del gateway de correo, o $search de Graph por buzon.
+const MAX_SCAN = 200;
+
+async function listRecent(since) {
+  const found = [];
+  for (const mailbox of config().mailboxes) {
+    const messages = await withFolder(mailbox, "INBOX", async (client) => {
+      if (!client.mailbox.exists) return [];
+      const uids = await client.search({ since }, { uid: true });
+      if (!uids || uids.length === 0) return [];
+      return client.fetchAll(uids.slice(-MAX_SCAN), { uid: true, source: true }, { uid: true });
+    });
+    for (const m of messages) found.push({ mailbox, raw: m.source });
+  }
+  return found;
+}
+
+module.exports = { isEnabled, fetchReports, quarantine, restore, listRecent };

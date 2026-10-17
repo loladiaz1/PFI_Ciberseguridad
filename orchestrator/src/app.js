@@ -22,7 +22,8 @@ const { findOpenIncident, mergeAlert } = require("./grouping");
 const { VERDICTS, VERDICT_LABELS, TAGS, NOTE_REQUIRED, MIN_NOTE_LENGTH, USE_CASE_TAG, tagsOf, mergeTags, validateClosure } = require("./closure");
 const { CATEGORIES, categoryOf, logAudit, backfillIncidentIds } = require("./audit");
 const { mitigate } = require("./mitigation");
-const { restoreEmails, publicEmail } = require("./emailActions");
+const { restoreEmails, dismissCandidate, publicEmail } = require("./emailActions");
+const { searchSimilar } = require("./campaign");
 const { startReportPolling } = require("./email");
 const {
   MODES,
@@ -485,6 +486,38 @@ app.post("/api/v1/incidents/:id/actions/restore-email", requireAuth, requireRole
     incident.id
   );
   res.status(200).json({ incidentId: updated.id, status: updated.status, ...result });
+});
+
+// Busqueda de correos similares de la campana (CU-03, src/campaign.js). Corre
+// sola al crear el incidente; esto la repite (llegaron correos nuevos).
+app.post("/api/v1/incidents/:id/search-similar", requireAuth, requireRole("admin", "analyst"), async (req, res) => {
+  const incident = await prisma.incident.findUnique({ where: { id: Number(req.params.id) } });
+  if (!incident) return res.status(404).json({ detail: "Incidente no encontrado" });
+  if (incident.useCase !== "CU-03") return res.status(422).json(WRONG_USE_CASE);
+
+  let result;
+  try {
+    result = await searchSimilar(incident.id, req.user.sub);
+  } catch (err) {
+    return res.status(502).json({ detail: err.message });
+  }
+  if (!result) return res.status(502).json({ detail: "La integración con el servidor de correo no está configurada" });
+  res.json(result);
+});
+
+app.post("/api/v1/incidents/:id/emails/:emailId/dismiss", requireAuth, requireRole("admin", "analyst"), async (req, res) => {
+  const incident = await prisma.incident.findUnique({ where: { id: Number(req.params.id) } });
+  if (!incident) return res.status(404).json({ detail: "Incidente no encontrado" });
+
+  const { email, error, detail } = await dismissCandidate(incident, Number(req.params.emailId));
+  if (error) return res.status(error).json({ detail });
+  await logAudit(
+    "email_dismissed",
+    `Correo descartado de la campaña: "${email.subject ?? "(sin asunto)"}" de ${email.fromAddress ?? "remitente desconocido"} (incidente #${incident.id})`,
+    req.user.sub,
+    incident.id
+  );
+  res.json(publicEmail(email));
 });
 
 // ---------------------------------------------------------------------------

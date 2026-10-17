@@ -82,6 +82,16 @@ export const restoreIncidentEmail = async (id: number, messageIds?: number[]): P
   return data;
 };
 
+// Busqueda de correos similares de la campana y descarte de un candidato.
+export const searchSimilarEmails = async (id: number): Promise<{ scanned: number; found: number }> => {
+  const { data } = await http.post(`/api/v1/incidents/${id}/search-similar`);
+  return data;
+};
+
+export const dismissEmail = async (id: number, emailId: number): Promise<void> => {
+  await http.post(`/api/v1/incidents/${id}/emails/${emailId}/dismiss`);
+};
+
 export const updateUser = async (fields: { name: string; email: string }): Promise<UserProfile> => {
   const { data } = await http.put<UserProfile>('/api/v1/me', fields);
   return data;

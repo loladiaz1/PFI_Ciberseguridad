@@ -8,7 +8,7 @@ import BottomNav from "../components/BottomNav";
 import { BrandHeader } from "../components/ui/BrandHeader";
 import { EmailCard } from "../components/EmailCard";
 import { MaterialCommunityIcons, MaterialIcons } from "@expo/vector-icons";
-import { getIncidentById, getIncidentTimeline, reopenIncident } from "../services/api";
+import { dismissEmail, getIncidentById, getIncidentTimeline, reopenIncident, searchSimilarEmails } from "../services/api";
 import { VERDICTS, tagsOf } from "../constants/verdicts";
 import { AUDIT_ICONS } from "../constants/audit";
 import { getStoredUser } from "../services/auth";
@@ -46,6 +46,10 @@ export default function IncidentDetail() {
     const [showReason, setShowReason] = useState(false);
 
     // Reapertura del caso.
+    // CU-03: candidatos de la busqueda de similares elegidos para la cuarentena.
+    const [selected, setSelected] = useState<number[]>([]);
+    const [searching, setSearching] = useState(false);
+
     const [reopening, setReopening] = useState(false);
     const [reopenNote, setReopenNote] = useState("");
     // Al escribir la nota de reapertura, el teclado no debe taparla: se
@@ -67,6 +71,49 @@ export default function IncidentDetail() {
     }, [id]);
 
     useFocusEffect(load);
+
+    // Al cargar, quedan elegidos los candidatos con un indicador fuerte (mismo
+    // adjunto, enlace, Responder a o IP de envio); los demas, a criterio.
+    const candidateKey = (incident?.emails ?? []).filter((e) => e.origin === "candidate" && e.status === "pending").map((e) => e.id).join(",");
+    useEffect(() => {
+        const strong = ["attachment", "url", "urlDomain", "replyTo", "sendingIp"];
+        setSelected(
+            (incident?.emails ?? [])
+                .filter((e) => e.origin === "candidate" && e.status === "pending" && e.matchedBy?.reasons.some((r) => strong.includes(r.type)))
+                .map((e) => e.id)
+        );
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- solo cuando cambian los candidatos pendientes
+    }, [candidateKey]);
+
+    const searchSimilar = async () => {
+        if (!incident) return;
+        setSearching(true);
+        try {
+            const r = await searchSimilarEmails(incident.id);
+            Alert.alert(S.email.similarTitle(0), S.email.searchDone(r.found, r.scanned));
+            load();
+        } catch (err) {
+            const detail = isAxiosError(err) ? err.response?.data?.detail : undefined;
+            Alert.alert(S.email.searchError, detail ?? S.common.genericError);
+        } finally {
+            setSearching(false);
+        }
+    };
+
+    const confirmDismiss = (email: { id: number }) => {
+        if (!incident) return;
+        Alert.alert(S.email.dismissTitle, S.email.dismissBody, [
+            { text: S.common.cancel, style: "cancel" },
+            {
+                text: S.email.dismiss,
+                style: "destructive",
+                onPress: () =>
+                    dismissEmail(incident.id, email.id)
+                        .then(load)
+                        .catch(() => Alert.alert(S.email.dismissError, S.common.genericError)),
+            },
+        ]);
+    };
 
     const confirmReopen = async () => {
         if (!incident) return;
@@ -108,7 +155,16 @@ export default function IncidentDetail() {
     const severity = severityLabel(incident.severity);
     const isEmail = incident.useCase === "CU-03";
     const action: MitigationAction = isEmail ? "quarantine-email" : incident.srcIp ? "block-ip" : "isolate-host";
-    const actionLabel = S.flow[action].label;
+    // CU-03: correos que entran en la cuarentena (los confirmados que falten y
+    // los candidatos elegidos). Sin candidatos elegidos, el backend usa los
+    // confirmados por defecto.
+    const emails = incident.emails ?? [];
+    const quarantineIds = [
+        ...emails.filter((e) => e.origin !== "candidate" && (e.status === "pending" || e.status === "restored")).map((e) => e.id),
+        ...selected,
+    ];
+    const quarantineParams = { id: String(incident.id), action: "quarantine-email", messageIds: selected.length ? quarantineIds.join(",") : "" };
+    const actionLabel = isEmail && selected.length ? S.email.quarantineCount(quarantineIds.length) : S.flow[action].label;
     const vt: VtStats | null = incident.enrichmentVt ? JSON.parse(incident.enrichmentVt) : null;
     const abuse: AbuseStats | null = incident.enrichmentAbuseIpdb ? JSON.parse(incident.enrichmentAbuseIpdb) : null;
     const mitigatedAt = incident.status === "blocked" ? incident.blockedAt
@@ -197,7 +253,17 @@ export default function IncidentDetail() {
                     </View>
                 ) : null}
 
-                {incident.emails?.length ? <EmailCard emails={incident.emails} /> : null}
+                {emails.length ? (
+                    <EmailCard
+                        emails={emails}
+                        canAct={canAct && !incident.closedAt}
+                        selected={selected}
+                        onToggle={(emailId) => setSelected((s) => (s.includes(emailId) ? s.filter((x) => x !== emailId) : [...s, emailId]))}
+                        onDismiss={confirmDismiss}
+                        onSearch={searchSimilar}
+                        searching={searching}
+                    />
+                ) : null}
 
                 {/* Decision de la automatizacion (orchestrator/src/automation.js) */}
                 {incident.automationDecision && incident.automationDecision !== "none" ? (
@@ -299,6 +365,12 @@ export default function IncidentDetail() {
                     <View style={styles.recommendation}>
                         <Text style={styles.recTitle}>{S.incident.alreadyMitigated}</Text>
                         <Text selectable style={styles.recText}>{S.incident.mitigatedAt(incident.status, mitigatedAt)}</Text>
+                        {/* Ya en cuarentena, pero se eligieron mas correos de la campana. */}
+                        {isEmail && canAct && quarantineIds.length ? (
+                            <TouchableOpacity style={styles.button} onPress={() => router.push({ pathname: "/confirm", params: quarantineParams })}>
+                                <Text style={styles.buttonText}>{actionLabel}</Text>
+                            </TouchableOpacity>
+                        ) : null}
                         {/* La cuarentena es reversible (falso positivo / correo legitimo). */}
                         {isEmail && canAct ? (
                             <TouchableOpacity
@@ -327,7 +399,7 @@ export default function IncidentDetail() {
                         {canAct ? (
                             <TouchableOpacity
                                 style={styles.button}
-                                onPress={() => router.push({ pathname: "/confirm", params: { id: String(incident.id), action } })}
+                                onPress={() => router.push({ pathname: "/confirm", params: isEmail ? quarantineParams : { id: String(incident.id), action } })}
                             >
                                 <Text style={styles.buttonText}>{actionLabel}</Text>
                             </TouchableOpacity>

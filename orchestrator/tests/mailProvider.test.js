@@ -24,6 +24,7 @@ function fakeClient(options) {
     }),
     fetchAll: jest.fn(async () => server[mailbox][client.folder].map((m) => ({ uid: m.uid, source: m.source, internalDate: m.date }))),
     search: jest.fn(async (query) => {
+      if (query.since) return (server[mailbox]?.[client.folder] ?? []).map((m) => m.uid);
       const id = query.header["message-id"];
       return (server[mailbox]?.[client.folder] ?? []).filter((m) => m.messageId === id).map((m) => m.uid);
     }),
@@ -119,4 +120,28 @@ test("cierra la sesion aunque la operacion falle", async () => {
   });
   await expect(mailProvider.quarantine("<m1>")).rejects.toThrow("IMAP caido");
   expect(client.logout).toHaveBeenCalled();
+});
+
+test("correos recientes de cada buzon, para la busqueda de similares", async () => {
+  server["alice@lab"].INBOX[0].source = Buffer.from("correo 1");
+  server["alice@lab"].INBOX[1].source = Buffer.from("correo 2");
+  server["bob@lab"].INBOX[0].source = Buffer.from("correo 7");
+  const since = new Date("2026-10-10T00:00:00Z");
+
+  const recent = await mailProvider.listRecent(since);
+
+  expect(recent.map((r) => [r.mailbox, r.raw.toString()])).toEqual([
+    ["alice@lab", "correo 1"],
+    ["alice@lab", "correo 2"],
+    ["bob@lab", "correo 7"],
+  ]);
+});
+
+test("buzon sin correos desde la fecha: nada que bajar", async () => {
+  ImapFlow.mockImplementation((options) => {
+    const client = fakeClient(options);
+    client.search.mockResolvedValue([]);
+    return client;
+  });
+  expect(await mailProvider.listRecent(new Date())).toEqual([]);
 });

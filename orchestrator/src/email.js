@@ -10,14 +10,14 @@
 // La clave del caso es el Message-ID: el mismo correo tiene el mismo
 // Message-ID en todos los buzones, en todos los reportes y en el log del
 // antispam. Varios reportes del mismo correo = un solo incidente.
-const crypto = require("crypto");
-const { simpleParser } = require("mailparser");
 const { prisma } = require("./db");
 const { logAudit } = require("./audit");
 const { mergeTags, USE_CASE_TAG } = require("./closure");
 const { enrichUrl, enrichFile } = require("./enrichment");
 const { runAutomation } = require("./automation");
 const mailProvider = require("./mailProvider");
+const { parseReport } = require("./emailParse");
+const { searchSimilar } = require("./campaign");
 
 const REPORT_RULE_ID = "user-report";
 // Un reporte sin confirmar es severidad media; si VirusTotal marca una URL o
@@ -28,54 +28,6 @@ const MALICIOUS_SEVERITY = 12;
 const MIN_ENGINES = 3;
 // Consultas a VT por correo (cuota gratuita: 4 por minuto).
 const MAX_LOOKUPS = 3;
-const MAX_URLS = 20;
-
-const addressOf = (field) => field?.value?.[0]?.address?.toLowerCase() ?? null;
-const sha256 = (buffer) => crypto.createHash("sha256").update(buffer).digest("hex");
-
-function urlsOf(mail) {
-  const text = `${mail.text ?? ""} ${typeof mail.html === "string" ? mail.html : ""}`;
-  const found = text.match(/https?:\/\/[^\s"'<>]+/gi) ?? [];
-  const clean = found.map((u) => u.replace(/[).,;]+$/, ""));
-  return [...new Set(clean)].slice(0, MAX_URLS);
-}
-
-// IP del servidor que entrego el correo: la primera que no sea local en los
-// encabezados Received (el de arriba es el ultimo salto).
-function sendingIpOf(mail) {
-  const received = [].concat(mail.headers.get("received") ?? []);
-  for (const header of received) {
-    const match = /\[(\d{1,3}(?:\.\d{1,3}){3})\]/.exec(String(header));
-    if (match && !match[1].startsWith("127.")) return match[1];
-  }
-  return null;
-}
-
-// Reporte crudo (el correo que llega a phishing@) -> reporte canonico. Tira
-// si no trae el original adjunto: sin el Message-ID no se lo puede buscar en
-// los buzones.
-async function parseReport(raw, receivedAt = new Date()) {
-  const outer = await simpleParser(raw);
-  const attached = outer.attachments.find((a) => a.contentType === "message/rfc822");
-  if (!attached) throw new Error("El reporte no trae el correo original adjunto (.eml)");
-
-  const original = await simpleParser(attached.content);
-  if (!original.messageId) throw new Error("El correo original no tiene Message-ID");
-
-  return {
-    source: "user_report",
-    reporter: addressOf(outer.from),
-    receivedAt: new Date(receivedAt),
-    messageId: original.messageId,
-    fromAddress: addressOf(original.from),
-    replyTo: addressOf(original.replyTo),
-    subject: original.subject ?? null,
-    sentAt: original.date ?? null,
-    sendingIp: sendingIpOf(original),
-    urls: urlsOf(original),
-    attachments: original.attachments.map((a) => ({ name: a.filename ?? null, sha256: sha256(a.content), size: a.size })),
-  };
-}
 
 function reportAlert(incidentId, report, severity) {
   return {
@@ -120,7 +72,11 @@ async function ingestReport(report) {
   if (open) {
     const reporters = JSON.parse(open.reportedBy);
     if (report.reporter && !reporters.includes(report.reporter)) reporters.push(report.reporter);
-    await prisma.incidentEmail.update({ where: { id: open.id }, data: { reportedBy: JSON.stringify(reporters) } });
+    // Si la busqueda de similares ya lo habia encontrado, ahora esta confirmado.
+    await prisma.incidentEmail.update({
+      where: { id: open.id },
+      data: { reportedBy: JSON.stringify(reporters), ...(open.origin === "candidate" ? { origin: "reported" } : {}) },
+    });
     const incident = await prisma.incident.update({
       where: { id: open.incidentId },
       data: { alertCount: open.incident.alertCount + 1, lastSeenAt: now },
@@ -172,10 +128,13 @@ async function ingestReport(report) {
   );
 
   // Igual que CU-01: enriquecer y despues decidir la automatizacion, sin
-  // frenar la ingesta (en los tests, en linea).
+  // frenar la ingesta (en los tests, en linea). Despues, la busqueda de
+  // correos similares de la campana (la cuarentena de esos la decide el
+  // analista: nunca automatica).
   const followUp = enrichEmail(incident.id, incident.emails[0])
     .catch((err) => console.error("No se pudo enriquecer el correo:", err.message))
-    .then(() => runAutomation(incident.id));
+    .then(() => runAutomation(incident.id))
+    .then(() => searchSimilar(incident.id).catch((err) => console.error("No se pudo buscar correos similares:", err.message)));
   if (process.env.AUTOMATION_INLINE === "1") await followUp;
 
   const { emails, ...rest } = incident;
