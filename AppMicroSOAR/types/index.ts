@@ -19,6 +19,8 @@ export interface IncidentEmail {
   urls: { url: string; vtMalicious?: number | null }[];
   attachments: { name: string | null; sha256: string; size: number; vtMalicious?: number | null }[];
   origin: 'reported' | 'candidate' | 'gateway';
+  // Busqueda de similares: en que coincide con la campana (null si lo reportaron).
+  matchedBy: { score: number; reasons: { type: string; value: string }[] } | null;
   status: 'pending' | 'quarantined' | 'restored' | 'dismissed';
   reportedBy: string[];
   mailboxes: string[];

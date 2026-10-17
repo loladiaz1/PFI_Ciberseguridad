@@ -5,7 +5,7 @@ const { prisma } = require("./db");
 const CATEGORIES = {
   access: ["login", "user_registered"],
   users: ["user_updated", "user_removed", "account_deleted"],
-  incidents: ["incident_detected", "alert_grouped", "incident_closed", "incident_reopened"],
+  incidents: ["incident_detected", "alert_grouped", "incident_closed", "incident_reopened", "campaign_searched", "email_dismissed"],
   response: ["ip_blocked", "host_isolated", "email_quarantined", "email_restored", "mitigation_failed"],
   automation: ["automation_simulated", "automation_failed", "automation_updated", "automation_paused"],
 };

@@ -210,7 +210,8 @@ Detalle completo en `CORRECCIONES para 75%.md`; registro en `progress.md` (sesi�
 - [x] **Automatización según contexto** (políticas configurables por el admin, inventario de activos, simulación, exclusiones, modo off) (14/10, PR #13)
 - [ ] Medir la contención automática (2-3 corridas por caso de uso) para comparar con la manual en las Conclusiones
 - [x] CU-03 phishing reportado: mail server de laboratorio, ingesta por IMAP, campaña 1:N, cuarentena / restauración en bloque, app (17/10, probado contra infra real: PR #16)
-- [ ] E90: búsqueda de correos similares de la campaña (IOCs: hash, URL/dominio, Reply-To, IP de envío) + Rspamd por Wazuh como segunda fuente de detección
+- [x] Búsqueda de correos similares de la campaña (IOCs: hash, URL/dominio, Reply-To, IP de envío, remitente, asunto; candidatos que elige el analista) (17/10) — [ ] falta probarla contra infra real (`terraform/send-campaign.sh`)
+- [ ] Rspamd por Wazuh como segunda fuente de detección de CU-03
 - [x] Línea de tiempo del incidente (alertas agrupadas con su archivo / usuario + eventos) y auditoría por categorías y por incidente (14/10, PR #14)
 - [x] Cierre de casos con veredicto, etiquetas y nota; reapertura; filtros y búsqueda de incidentes (16/10)
 - [x] Mejoras de la automatización: IPv6 en la lista de exclusión, cortacircuitos, activos desconocidos = criticidad alta, auditoría antes → después, precisión por política (16/10)
