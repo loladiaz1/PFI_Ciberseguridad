@@ -154,3 +154,84 @@ test("campana de varios correos: una conexion y un solo movimiento por buzon", a
   expect(server["alice@lab"].INBOX).toEqual([]);
   expect(server["alice@lab"].Quarantine.map((m) => m.uid)).toEqual([1, 2]);
 });
+
+describe("aviso inmediato de reportes (IMAP IDLE)", () => {
+  const { EventEmitter } = require("events");
+  let clients;
+
+  function idleClient({ failOpen = false } = {}) {
+    const client = Object.assign(new EventEmitter(), {
+      connect: jest.fn(async () => {}),
+      mailboxOpen: jest.fn(async () => {
+        if (failOpen) throw new Error("buzon no disponible");
+      }),
+      logout: jest.fn(async () => {}),
+    });
+    clients.push(client);
+    return client;
+  }
+
+  beforeEach(() => {
+    clients = [];
+    jest.useFakeTimers();
+    jest.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  const flush = () => new Promise((resolve) => jest.requireActual("timers").setImmediate(resolve));
+
+  test("avisa al conectar y cada vez que llega un correo; cortar cierra la sesion", async () => {
+    ImapFlow.mockImplementation(() => idleClient());
+    const onChange = jest.fn();
+    const stop = mailProvider.watchReports(onChange);
+    await flush();
+
+    expect(ImapFlow.mock.calls[0][0].auth.user).toBe("phishing@lab*soar");
+    expect(clients[0].mailboxOpen).toHaveBeenCalledWith("INBOX");
+    expect(onChange).toHaveBeenCalledTimes(1);
+    clients[0].emit("exists", { count: 1 });
+    expect(onChange).toHaveBeenCalledTimes(2);
+
+    stop();
+    expect(clients[0].logout).toHaveBeenCalled();
+    clients[0].emit("close");
+    jest.advanceTimersByTime(MAX_WAIT);
+    expect(ImapFlow).toHaveBeenCalledTimes(1);
+  });
+
+  test("si la conexion se cae, reconecta", async () => {
+    ImapFlow.mockImplementation(() => idleClient());
+    const onChange = jest.fn();
+    mailProvider.watchReports(onChange);
+    await flush();
+
+    clients[0].emit("close");
+    jest.advanceTimersByTime(1000);
+    await flush();
+    expect(ImapFlow).toHaveBeenCalledTimes(2);
+    expect(onChange).toHaveBeenCalledTimes(2);
+  });
+
+  test("si no puede abrir el buzon, reintenta con espera creciente", async () => {
+    ImapFlow.mockImplementation(() => idleClient({ failOpen: true }));
+    mailProvider.watchReports(jest.fn());
+    await flush();
+    expect(clients[0].logout).toHaveBeenCalled();
+
+    jest.advanceTimersByTime(1000);
+    await flush();
+    expect(ImapFlow).toHaveBeenCalledTimes(2);
+    // La segunda espera es de 2 s: al segundo todavia no reintento.
+    jest.advanceTimersByTime(1000);
+    await flush();
+    expect(ImapFlow).toHaveBeenCalledTimes(2);
+    jest.advanceTimersByTime(1000);
+    await flush();
+    expect(ImapFlow).toHaveBeenCalledTimes(3);
+  });
+});
+
+const MAX_WAIT = 60 * 1000;

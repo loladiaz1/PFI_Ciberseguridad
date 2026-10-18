@@ -90,6 +90,7 @@ _(Cambios de rumbo respecto al PLAN, con el motivo. Para defender ante el tribun
 
 | Fecha | Decisión | Motivo |
 |---|---|---|
+| 2026-10-18 | CU-03: el orquestador se entera de los reportes por **IMAP IDLE** (aviso inmediato del servidor); el chequeo periódico pasa de cada 15 s a respaldo cada 60 s | La medición de CU-03 dio detección p50 6,82 s / p95 11,83 s, fuera de la cota de RNF-05 (≤ 5 s) en 3 de 5 corridas, por la espera del chequeo. Se descartó acotar el RNF a las alertas de Wazuh: es aceptar el número en vez de mejorarlo. IDLE es el estándar IMAP para esto y la librería ya lo soporta; en Graph / Gmail el equivalente son las suscripciones. |
 | 2026-08-04 | Alcance = Opción A recortada, demo 5 min | Deadline 18/08, 2 personas |
 | 2026-08-04 | Víctima del brute-force en VM dedicada (`aws_instance.victim`), no agente local en el manager | El agente 000 rechaza active-response (error 1703); además separa atacante → víctima → manager de forma más realista y defendible. Costo marginal (t3.micro) |
 | 2026-08-04 | Orchestrator migrado de Python/FastAPI a Node.js/Express + Prisma | El documento de propuesta (ya entregado/evaluado) especifica Node.js v18+, Express, Axios, JWT. Se había arrancado en Python por simplicidad del spike, pero al confirmar que el documento ya fue evaluado había que alinear la implementación. Se reescribió todo (Fase 0 y Fase 1) antes de sumar más código sobre la base equivocada. |
@@ -126,6 +127,16 @@ _(Cambios de rumbo respecto al PLAN, con el motivo. Para defender ante el tribun
 
 ## Bitácora de sesiones
 _(La más reciente arriba. Formato fijo por entrada.)_
+
+### Sesión 2026-10-18 — Medición de la contención automática y documento en LaTeX
+- **Hecho:**
+  - **Contención automática medida** (3 corridas de CU-01 y 3 de CU-02, incidentes #1362-#1367, las 6 con `automationDecision = executed`): p50 **1,51 s**, p95 **1,96 s**, contra 21,1 s / 31,3 s de la contención manual (14 veces menor) y 8-14 min de la línea de base (−99,7 %). La decisión automática tarda p50 0,25 s (manual: 19,9 s). Detalle en `docs/metricas-campana-2026-10-14.md`, sección 6. Configuración durante la medición por la API de administración (auditada): modo activo, política "fuerza-bruta-laboratorio" habilitada, cortacircuitos 50 / 10 min; **restaurada** al terminar (simulación, política deshabilitada, 5 / 10 min).
+  - Documento de la tesis migrado de Google Docs a LaTeX (repo aparte, rama `migracion-gdoc`) y alineado con el prototipo (etapa 2); diagramas vectoriales en curso (etapa 3).
+  - **CU-03 medido (contención manual, 5 corridas, #1368-#1372):** contención p50 25,37 s / p95 35,71 s (cumple ≤ 60 s), acción p50 0,10 s, pero detección p50 6,82 s / p95 11,83 s: **no cumple la cota de detección** (≤ 5 s) por el chequeo del buzón cada 15 s. `docs/metricas-campana-2026-10-14.md`, sección 7.
+  - **Ajuste a partir de la medición: IMAP IDLE** (`mailProvider.watchReports`): conexión abierta al buzón de reportes, el servidor avisa en cuanto llega un correo y se lee al instante; reconexión con espera creciente (1 s a 1 min); el chequeo periódico queda como respaldo cada 60 s; un aviso que llega durante una lectura dispara otra al terminar. Tests: **210**. Falta: deploy y volver a medir (sección 8 del documento de métricas).
+  - Security group del manager: el agente del servidor de correo no podía conectarse (1514-1515 solo desde la víctima); se agregó el SG del mail (update in-place). Lo detectó la revisión de los diagramas de la tesis.
+  - Diagramas de la tesis en TikZ (etapa 3), incluidas secuencias nuevas de CU-02 y CU-03.
+- **Pendiente:** criticidad por defecto de activos desconocidos sigue en "media" en producción (debería ser "alta"); Conclusiones con estas métricas; brechas de la rúbrica (modelo de negocio, viabilidad económica con dos escenarios y VAN/TIR/payback, branding, metodología, justificación tecnológica, tendencias).
 
 ### Sesión 2026-10-17 (tarde) — CU-03: flujo del analista y búsqueda de correos similares
 - **Hecho:**

@@ -168,10 +168,16 @@ async function ingestReport(report) {
   return { incident: rest, created: true };
 }
 
-// Una pasada por el buzon de reportes. Nunca tira (corre en un intervalo).
+// Una pasada por el buzon de reportes. Nunca tira. Si ya hay una en curso,
+// se repite al terminar (un aviso de IDLE que llega en el medio no se pierde).
 let polling = false;
+let pending = false;
 async function pollReports() {
-  if (polling || !mailProvider.isEnabled()) return 0;
+  if (!mailProvider.isEnabled()) return 0;
+  if (polling) {
+    pending = true;
+    return 0;
+  }
   polling = true;
   try {
     return await mailProvider.fetchReports(async (raw, receivedAt) => ingestReport(await parseReport(raw, receivedAt)));
@@ -180,15 +186,24 @@ async function pollReports() {
     return 0;
   } finally {
     polling = false;
+    if (pending) {
+      pending = false;
+      setImmediate(pollReports);
+    }
   }
 }
 
-const POLL_INTERVAL_MS = 15 * 1000;
+// Detección: IMAP IDLE avisa al instante cuando llega un reporte. El
+// chequeo periódico queda solo como red de seguridad (si IDLE se cae).
+// Hasta el 18/10 era solo el chequeo cada 15 s: la medición de CU-03 dio
+// detección p50 6,8 s / p95 11,8 s, fuera de la cota de RNF-05 (5 s).
+const SAFETY_POLL_MS = 60 * 1000;
 
 function startReportPolling() {
   if (!mailProvider.isEnabled()) return null;
-  console.log("CU-03: leyendo el buzón de reportes cada", POLL_INTERVAL_MS / 1000, "s");
-  return setInterval(pollReports, POLL_INTERVAL_MS);
+  console.log("CU-03: buzón de reportes por IMAP IDLE (chequeo de respaldo cada", SAFETY_POLL_MS / 1000, "s)");
+  mailProvider.watchReports(() => pollReports());
+  return setInterval(pollReports, SAFETY_POLL_MS);
 }
 
 module.exports = { parseReport, ingestReport, pollReports, startReportPolling, REPORT_RULE_ID };

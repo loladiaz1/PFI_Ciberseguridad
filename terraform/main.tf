@@ -75,13 +75,14 @@ resource "aws_security_group" "wazuh" {
   }
 
   # Agents connect outbound to the manager on 1514 (events) and 1515
-  # (enrollment). Only the victim instance needs to reach the manager this way.
+  # (enrollment): la victima y el mail server (CU-03, a futuro los logs de
+  # Rspamd).
   ingress {
-    description     = "Wazuh agent enrollment/events from the victim instance"
+    description     = "Wazuh agent enrollment/events from the victim and mail instances"
     from_port       = 1514
     to_port         = 1515
     protocol        = "tcp"
-    security_groups = [aws_security_group.victim.id]
+    security_groups = [aws_security_group.victim.id, aws_security_group.mail.id]
   }
 
   # El orchestrator llama a la API de Wazuh (POST /active-response) para

@@ -86,6 +86,50 @@ async function fetchReports(handle) {
   });
 }
 
+// Aviso inmediato de reportes nuevos (IMAP IDLE): una conexion abierta al
+// buzon de reportes; el servidor avisa ("exists") en cuanto llega un correo,
+// en vez de esperar al proximo chequeo periodico. Si la conexion se cae,
+// reconecta con espera creciente (hasta 1 min). onChange se llama tambien al
+// conectar, por si llego algo mientras no habia conexion. Devuelve una
+// funcion para cortar. En Graph / Gmail el equivalente son las
+// suscripciones (webhooks / Pub/Sub).
+const MAX_RETRY_MS = 60 * 1000;
+
+function watchReports(onChange) {
+  let client = null;
+  let stopped = false;
+  let retryMs = 1000;
+
+  const retry = () => {
+    if (stopped) return;
+    setTimeout(open, retryMs);
+    retryMs = Math.min(retryMs * 2, MAX_RETRY_MS);
+  };
+
+  async function open() {
+    try {
+      client = await connect(config().reportMailbox);
+      client.on("error", (err) => console.error("IMAP IDLE:", err.message));
+      await client.mailboxOpen("INBOX");
+    } catch (err) {
+      console.error("No se pudo abrir IMAP IDLE:", err.message);
+      client?.logout().catch(() => {});
+      return retry();
+    }
+    retryMs = 1000;
+    client.on("close", retry);
+    // Seleccionada la carpeta y sin otros comandos, imapflow queda en IDLE.
+    client.on("exists", () => onChange());
+    onChange();
+  }
+
+  open();
+  return () => {
+    stopped = true;
+    client?.logout().catch(() => {});
+  };
+}
+
 // Mueve los correos de una campana (por Message-ID) de una carpeta a otra en
 // todos los buzones: UNA conexion por buzon y un solo movimiento con todos los
 // que encuentra (una campana de miles de correos no abre miles de conexiones
@@ -131,4 +175,4 @@ async function listRecent(since) {
   return found;
 }
 
-module.exports = { isEnabled, fetchReports, quarantine, restore, listRecent };
+module.exports = { isEnabled, fetchReports, watchReports, quarantine, restore, listRecent };
