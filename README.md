@@ -36,7 +36,7 @@ docs/anexo-pruebas/ # anexo de pruebas y cobertura para la tesis (PDF regenerabl
 - **CU-02** (aislar endpoint): ✅ detección real (EICAR → VirusTotal → incidente) y aislamiento real desde el celular, confirmados el 08/10.
 - **CU-03** (phishing reportado): ✅ mail server de laboratorio (`terraform/mail.tf`), el usuario reenvía el correo a `phishing@`, el incidente agrupa la campaña (mismo Message-ID o indicadores en común), busca correos similares en los buzones y la app los pone en cuarentena / los restaura en bloque. Probado contra infra real el 17/10.
 - **CI/CD**: ✅ cada PR corre `terraform plan` + tests con umbral de cobertura; cada merge a `main` aplica Terraform (con freno anti-destroy) y deploya el orchestrator vía SSM, sin credenciales guardadas (OIDC). Funcionando desde el 13/10.
-- **Calidad**: ✅ cobertura del orchestrator 98,3% líneas / 92,4% ramas (umbral obligatorio 85%), 206 tests (17/10). Anexo para la tesis en [`docs/anexo-pruebas/`](docs/anexo-pruebas/).
+- **Calidad**: ✅ cobertura del orchestrator 98,9% líneas / 92,4% ramas (umbral obligatorio 85%), 210 tests (18/10). Anexo para la tesis en [`docs/anexo-pruebas/`](docs/anexo-pruebas/).
 - **Fase 4** (hardening y ensayo): 🟡 security groups cerrados, filtro de ruido de alertas (13/10: 1335 → 15 incidentes reales); falta video de respaldo y ensayo cronometrado.
 
 ## Orchestrator — cómo levantarlo

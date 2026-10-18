@@ -43,6 +43,9 @@ const SUITES = {
   "timeline.test.js": ["Línea de tiempo y auditoría por incidente", "Trazabilidad", "Evidencia del caso perdida al agrupar alertas, o eventos de auditoría que no se pueden atribuir a su incidente."],
   "closure.test.js": ["Cierre de casos y filtros", "Triaje", "Un caso cerrado sin justificación, un falso positivo descartado sin control, o un caso cerrado que sigue absorbiendo alertas."],
   "privacy.test.js": ["Protección de datos personales", "Ley 25.326", "Datos personales conservados más de lo necesario, o una baja que borra la trazabilidad de seguridad o no quita el acceso."],
+  "phishing.test.js": ["Phishing reportado: ingesta, cuarentena y restauración", "CU-03", "Un reporte sin el correo original se procesa igual, el mismo correo abre varios incidentes, o la cuarentena informa éxito sin haber movido el correo de ningún buzón."],
+  "campaign.test.js": ["Búsqueda de correos similares de la campaña", "CU-03", "Correos legítimos tratados como parte de la campaña (por un asunto parecido o un dominio común), candidatos que entran en la cuarentena sin que el analista los elija, o variantes de la misma campaña repartidas en varios incidentes."],
+  "mailProvider.test.js": ["Integración con el servidor de correo (IMAP)", "CU-03", "Una campaña de miles de correos que abre miles de conexiones, reportes procesados dos veces, una sesión que queda abierta tras un error, o un aviso de reporte nuevo que se pierde si la conexión se cae."],
 };
 
 const suites = results.testResults
@@ -94,7 +97,7 @@ const html = `<!doctype html>
 </style></head><body>
 
 <h1>Anexo — Pruebas y cobertura del orquestador</h1>
-<p class="sub">Micro-SOAR · Plataforma móvil de respuesta a incidentes · Proyecto Final de Ingeniería</p>
+<p class="sub">Fortia (Micro-SOAR) · Plataforma móvil de respuesta a incidentes · Proyecto Final de Ingeniería</p>
 <div class="meta">
   Generado el ${esc(fecha)} a partir de la corrida real de la suite sobre el commit <code>${esc(commit)}</code>.
   Entorno: Node.js ${esc(process.version)}, Jest ${esc(jestVersion)}, base SQLite efímera.
@@ -108,13 +111,13 @@ const html = `<!doctype html>
   <div class="kpi"><b>${pct(total.lines.pct)}</b><span>cobertura de líneas</span></div>
   <div class="kpi"><b>${pct(total.branches.pct)}</b><span>cobertura de ramas</span></div>
 </div>
-<p>El orquestador (backend Node.js/Express que recibe las alertas de Wazuh, las normaliza en incidentes, las enriquece y ejecuta las acciones de respuesta) supera el umbral de <b>${threshold.lines}%</b> exigido en las cuatro métricas de cobertura. El umbral no es solo un objetivo: está configurado en <code>coverageThreshold</code> y el pipeline de integración continua rechaza cualquier cambio que lo haga descender.</p>
+<p>El orquestador (backend Node.js/Express que recibe las alertas de Wazuh y los reportes de phishing, los normaliza en incidentes, los enriquece y ejecuta las acciones de respuesta) supera el umbral de <b>${threshold.lines}%</b> exigido en las cuatro métricas de cobertura. El umbral no es solo un objetivo: está configurado en <code>coverageThreshold</code> y el pipeline de integración continua rechaza cualquier cambio que lo haga descender.</p>
 <p>Las pruebas automatizadas se complementan con pruebas de punta a punta contra la infraestructura real en AWS (sección 5), que validan lo que los mocks no pueden: el comportamiento efectivo de Wazuh, del firewall del host y de la app en un dispositivo físico.</p>
 
 <h2>2. Estrategia de pruebas</h2>
 <table>
   <tr><th>Nivel</th><th>Qué valida</th><th>Cómo</th></tr>
-  <tr><td>Unitario</td><td>Normalización y filtrado de alertas; cliente de la API de Wazuh; enriquecimiento</td><td>Jest. Las llamadas HTTP externas (Wazuh, VirusTotal, AbuseIPDB) se reemplazan por mocks de <code>axios</code> que reproducen respuestas reales, incluidos los errores.</td></tr>
+  <tr><td>Unitario</td><td>Normalización y filtrado de alertas; cliente de la API de Wazuh; enriquecimiento</td><td>Jest. Las llamadas HTTP externas (Wazuh, VirusTotal, AbuseIPDB) se reemplazan por mocks de <code>axios</code> que reproducen respuestas reales, incluidos los errores; el servidor de correo, por un cliente IMAP simulado con buzones en memoria.</td></tr>
   <tr><td>Integración (API)</td><td>Endpoints REST completos: webhook, incidentes, acciones de respuesta, autenticación, auditoría</td><td>Supertest contra la aplicación Express real y una base SQLite efímera creada con Prisma en cada corrida. Solo se aísla la frontera con Wazuh.</td></tr>
   <tr><td>Punta a punta</td><td>Cadena completa ataque → detección → incidente → app → acción → efecto en la red</td><td>Manual y documentada, contra la infraestructura de AWS y un celular real por Tailscale (sección 5).</td></tr>
 </table>
@@ -182,6 +185,14 @@ ${s.tests
   <tr><td>08/10</td><td>Enriquecimiento en la app</td><td>Tarjeta de inteligencia de amenazas con datos reales de VirusTotal y AbuseIPDB.</td></tr>
   <tr><td>13/10</td><td>Filtro de ruido</td><td>Alerta EICAR nueva llega como incidente; escaneo de integridad posterior no genera incidente. Base depurada de 1.335 a 15 incidentes reales.</td></tr>
   <tr><td>13/10</td><td>Despliegue continuo</td><td>Merge a la rama principal → plan de Terraform sin cambios destructivos → despliegue automático del orquestador vía AWS SSM.</td></tr>
+  <tr><td>14/10</td><td>Campaña de medición, contención manual (CU-01 y CU-02)</td><td>12 corridas: contención p50 21,1 s / p95 31,3 s, unas 28 veces menos que los ~10 minutos que insume evaluar una sola alerta en un SOC (Kersten et al., 2023); base de las cotas de los RNF.</td></tr>
+  <tr><td>16/10</td><td>Prueba exploratoria de la app completa en un dispositivo real (realizada por el equipo)</td><td>Hallazgos corregidos: el teclado tapaba la nota de cierre, márgenes y etiquetas desparejos, no se podía copiar una IP, el motivo de la automatización se cortaba, y un intento de mitigación rechazado por Wazuh no quedaba en la auditoría (ahora queda, con quién y por qué falló).</td></tr>
+  <tr><td>17/10</td><td>Flujo del analista para contener y cerrar un caso</td><td>Recorrido en el dispositivo: de unos 11 toques (biometría en pantalla aparte, volver a buscar el caso para cerrarlo) a 5 (confirmar → huella → éxito → "Cerrar caso" → cerrar, con el veredicto preelegido si se contuvo).</td></tr>
+  <tr><td>17/10</td><td>CU-03: correo reportado → cuarentena desde la app</td><td>Incidente creado desde el reporte; el correo sale del INBOX de los dos destinatarios y queda en Cuarentena; restauración y nueva cuarentena verificadas en los buzones.</td></tr>
+  <tr><td>17/10</td><td>CU-03: búsqueda de correos similares</td><td>Dos variantes de la campaña (otro asunto y remitente) encontradas como candidatas; el correo legítimo revisado y excluido; la variante descartada quedó en el INBOX.</td></tr>
+  <tr><td>18/10</td><td>Contención automática (CU-01 y CU-02)</td><td>6 corridas contenidas por la automatización sin intervención humana: p50 1,51 s / p95 1,96 s.</td></tr>
+  <tr><td>18/10</td><td>CU-03: medición de la contención manual</td><td>Contención p50 25,4 s, pero detección p50 6,8 s / p95 11,8 s, fuera de la cota de 5 s (ver defectos).</td></tr>
+  <tr><td>18/10</td><td>CU-03 con IMAP IDLE</td><td>Nueva medición tras el cambio: detección p50 0,84 s / p95 1,29 s, las 5 corridas dentro de la cota; contención p50 12,5 s.</td></tr>
 </table>
 
 <h2>6. Defectos detectados por las pruebas</h2>
@@ -193,6 +204,11 @@ ${s.tests
   <tr><td>08/10</td><td>Aislar host informaba éxito sin aislar: el script estaba instalado con un nombre distinto al invocado.</td><td>Prueba de punta a punta</td><td>Instalación corregida y documentada.</td></tr>
   <tr><td>13/10</td><td>1.320 de 1.334 incidentes eran ruido (actualizaciones del sistema).</td><td>Verificación posterior al despliegue</td><td>Filtro en el manager y en el orquestador (cubierto en <code>alertFilter.test.js</code>).</td></tr>
   <tr><td>13/10</td><td>Pruebas dependientes de la configuración local (<code>.env</code>).</td><td>Primera ejecución en CI</td><td>Configuración de pruebas autocontenida.</td></tr>
+  <tr><td>14/10</td><td>Un mismo ataque generaba dos incidentes (reglas 5712 y 5551): el analista mitigaba uno y el otro quedaba abierto.</td><td>Campaña de medición</td><td>Agrupamiento de alertas por agente e IP (cubierto en <code>grouping.test.js</code>).</td></tr>
+  <tr><td>17/10</td><td>Las pruebas locales consultaban VirusTotal y AbuseIPDB con las claves reales: la configuración de pruebas las borraba, pero la carga del <code>.env</code> las volvía a completar.</td><td>Consumo inesperado en el panel de cuota de VirusTotal</td><td>Claves vacías (no borradas) en la configuración de pruebas.</td></tr>
+  <tr><td>17/10</td><td>Una prueba dependía del fin de línea del archivo de ejemplo (CRLF en Windows, LF en CI).</td><td>Ejecución en CI</td><td>Prueba independiente del fin de línea.</td></tr>
+  <tr><td>18/10</td><td>CU-03: detección fuera de la cota de RNF-05 (p50 6,8 s / p95 11,8 s) por el chequeo del buzón de reportes cada 15 s.</td><td>Medición de punta a punta</td><td>Cambio de diseño a IMAP IDLE con chequeo de respaldo cada 60 s (cubierto en <code>mailProvider.test.js</code> y <code>phishing.test.js</code>); nueva medición dentro de la cota.</td></tr>
+  <tr><td>18/10</td><td>El agente Wazuh del servidor de correo no podía conectarse al manager (el security group solo aceptaba a la víctima).</td><td>Revisión de la arquitectura al dibujar los diagramas</td><td>Regla del security group ampliada.</td></tr>
 </table>
 
 <h2>7. Alcance y limitaciones</h2>

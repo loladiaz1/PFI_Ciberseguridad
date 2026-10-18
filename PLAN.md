@@ -193,14 +193,14 @@ Detalle completo en `CORRECCIONES para 75%.md`; registro en `progress.md` (sesi�
 - [ ] Resolución completa de las observaciones de E50 (ver abajo)
 - [x] Evidencia de testing con cobertura ≥ 85% (`docs/anexo-pruebas/anexo-pruebas.pdf`, 13/10)
 - [x] Marco legal y de privacidad: anonimización de datos y Ley 25.326 (14/10; base para la tesis en `docs/privacidad-ley-25326.md`)
-- [ ] Capítulo de Conclusiones y Trabajo Futuro fundamentado con métricas (datos listos: contención p50 21,1 s / p95 31,3 s vs 8-14 min, ver `docs/metricas-campana-2026-10-14.md`)
+- [ ] Capítulo de Conclusiones fundamentado con métricas (Trabajo Futuro ya escrito en la tesis). Datos listos en `docs/metricas-campana-2026-10-14.md`: manual p50 21,1 s / p95 31,3 s; automática p50 1,51 s / p95 1,96 s; CU-03 con IMAP IDLE p50 12,5 s, detección p50 0,84 s
 
 **Correcciones técnicas del producto**
 - [x] Instrumentar tiempos de respuesta por incidente + `GET /api/v1/metrics` (14/10, PR #7)
 - [x] App con refresco automático cada 10 s (14/10, PR #8)
 - [x] **Campaña de medición** (14/10): 6 corridas completas por caso de uso + 24 detecciones. Resultados en `docs/metricas-campana-2026-10-14.md`
 - [x] Cotas numéricas propuestas a partir de la campaña — **crítica**: detección ≤ 5 s, visible en la app ≤ 15 s, ejecución de la acción ≤ 2 s, contención (SLA) ≤ 60 s, todas p95 (14/10)
-- [ ] Incorporar las cotas al documento (RNF-05, RNF-07, precondiciones de CU-01/CU-02)
+- [x] Incorporar las cotas al documento (RNF-05, RNF-07, precondiciones de CU-01/CU-02) (18/10, tesis en LaTeX, etapa 2)
 - [x] Eliminar cuenta (`DELETE /api/v1/me` + botón en Perfil, auditoría seudonimizada) — **crítica** (14/10)
 - [x] Ley 25.326: retención con enmascarado de IPs a 90 días, aviso de privacidad en la app, consentimiento en el registro — **crítica** (14/10)
 - [x] Responsable en el aviso de privacidad (14/10) — [ ] falta un email de contacto
@@ -219,14 +219,25 @@ Detalle completo en `CORRECCIONES para 75%.md`; registro en `progress.md` (sesi�
 - [x] Mejoras de la automatización: IPv6 en la lista de exclusión, cortacircuitos, activos desconocidos = criticidad alta, auditoría antes → después, precisión por política (16/10)
 - [x] App en español con todos los textos en un único archivo (`constants/strings.ts`); mitigación fallida auditada (16/10)
 - [ ] En producción, después del deploy: criticidad por defecto "alta" desde Automatización (la base existente conserva "media")
-- [ ] Modelo de datos y contrato de API del documento generados desde el sistema real (incluye las tablas y endpoints nuevos: usuarios, automatización, activos, alertas)
-- [ ] Regenerar el anexo de pruebas antes del 20/10 (155 tests al 16/10; el PDF actual muestra 49)
-- [ ] Modelo de datos y contrato de API del documento = sistema real (no "versión objetivo")
-- [ ] Diagramas vectoriales (arquitectura, flujos, secuencia, entidad-relación) — **crítica**
-- [ ] Los 11 RNF redactados como "El sistema debe..." (junto con las cotas)
+- [x] Anexo de pruebas regenerado (18/10: 210 tests, 98,9 % líneas / 92,4 % ramas; suma CU-03, campañas de medición y los defectos encontrados por las mediciones)
+- [x] Modelo de datos y contrato de API del documento = sistema real (8 modelos de Prisma, 28 rutas de app.js) (18/10, etapa 2)
+- [x] Diagramas vectoriales en TikZ (casos de uso, arquitectura VPC y en tres capas, flujo base, secuencias CU-01/02/03, entidad-relación, Gantt con hitos) — **crítica** (18/10, etapa 3)
+- [x] Los 11 RNF redactados como "El sistema debe..." (junto con las cotas) (18/10, etapa 2)
+- [x] CU-03: detección por IMAP IDLE a partir de la medición (p50 6,82 s → 0,84 s) (18/10, PR #22)
 
-**Correcciones del documento** (formato, citas, estructura: títulos, carátulas, bibliografía, numeración, etc.)
-- [ ] Pendientes. Migración del documento de Google Docs a LaTeX: pausada por ahora (varias correcciones de formato se resuelven solas con LaTeX)
+**Correcciones del documento** (repo de LaTeX aparte, rama `migracion-gdoc`)
+- [x] Migración de Google Docs a LaTeX con las correcciones de formato y estructura (tablas y figuras numeradas y citadas, bibliografía ISO 690, Antecedentes, anexos por entrevista, título sin siglas) (18/10)
+- [x] Etapa 2: documento alineado con el prototipo (Four-Eyes → automatización como excepción controlada, CU-03 con RF-18 y HU-20, stack real) (18/10)
+- [ ] `\todo{}` restantes: DNI del tutor, FODA (fuente y cuadrantes Debilidades / Amenazas), Kaur et al. (versión publicada), presupuesto con las 4 instancias reales, nota en la tabla de horas, Zhu → Han et al., ejemplo `\Nico{}` en conclusion.tex
+- [ ] Portada de la biblioteca UADE con el título nuevo y el tutor nuevo
+
+**Brechas contra la rúbrica E75** (no son correcciones de la E50, pero puntúan)
+- [ ] Conclusiones generales ligadas a cada objetivo, con las métricas
+- [ ] Metodología de desarrollo y validación: iterativa e incremental, con la tabla de ciclos medir → ajustar (ver bitácora, entradas 8 a 12)
+- [ ] Resultados de las pruebas con las decisiones que salieron de ellos
+- [ ] Modelo de negocio; viabilidad económica (dos escenarios, VAN / TIR / payback); branding y logo explicados
+- [ ] Justificación tecnológica (Node/Express, Expo, SQLite+Prisma, Wazuh, Tailscale, Terraform); datasets y viabilidad técnica explicitados ("no aplica" justificado)
+- [ ] Tendencias en informática (riesgo de "Parcial": el prototipo no usa ML)
 
 ## 9. Diseño para escalar (cuesta casi lo mismo ahora)
 - Orquestador normaliza a `Incident` canónico (no propaga la alerta cruda).
