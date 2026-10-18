@@ -260,8 +260,49 @@ cuarentena.
 - n = 5, un solo analista que esperaba el incidente; laboratorio con dos
   buzones.
 
-## 8. CU-03 después del cambio a IMAP IDLE — pendiente
+## 8. CU-03 después del cambio a IMAP IDLE — 18/10/2026
 
-> Se completa con la medición posterior al deploy: mismas 3-5 corridas que la
-> sección 7 (`send-phish` → cuarentena → cierre), para comparar la detección
-> antes (chequeo cada 15 s: p50 6,82 s / p95 11,83 s) y después (IDLE).
+### Método
+
+Igual que la sección 7 (5 corridas: `send-phish` → cuarentena con step-up →
+cierre como verdadero positivo), con el orquestador desplegado con IMAP IDLE
+(PR #22, commit `ebd2754`; el log confirma "buzón de reportes por IMAP IDLE").
+
+### Resultados
+
+| Tiempo | Antes: chequeo cada 15 s (sección 7) | **Después: IMAP IDLE** | Cota |
+|---|---|---|---|
+| Detección → ingesta | p50 6,82 s · p95 11,83 s | p50 **0,84 s** · p95 **1,29 s** (mín. 0,55 s) | ≤ 5 s |
+| Ejecución de la acción | p50 0,10 s · p95 0,11 s | p50 **0,10 s** · p95 **0,11 s** | ≤ 2 s |
+| Decisión del analista | p50 16,98 s · p95 31,88 s | p50 **11,64 s** · p95 **19,47 s** | — |
+| Contención total | p50 25,37 s · p95 35,71 s | p50 **12,50 s** · p95 **20,02 s** | ≤ 60 s |
+
+| Incidente | Detección → ingesta | Decisión | Acción | Contención |
+|---|---|---|---|---|
+| #1373 | 0,86 s | 11,64 s | 0,11 s | 12,50 s |
+| #1374 | 0,84 s | 12,89 s | 0,10 s | 13,73 s |
+| #1375 | 1,29 s | 11,03 s | 0,11 s | 12,31 s |
+| #1376 | 0,55 s | 19,47 s | 0,10 s | 20,02 s |
+| #1377 | 0,67 s | 10,33 s | 0,10 s | 11,00 s |
+
+### Lectura
+
+1. **La detección bajó 8 veces en la mediana (6,82 s → 0,84 s) y 9 veces en el
+   p95 (11,83 s → 1,29 s).** Las 5 corridas cumplen la cota de RNF-05 (≤ 5 s),
+   que antes fallaba en 3 de 5; también "visible en la app ≤ 15 s" (1,29 s +
+   hasta 10 s de refresco). CU-03 queda en el mismo orden de detección que
+   CU-01 y CU-02 (~1,3 s), que reciben la alerta empujada por Wazuh.
+2. **La contención total bajó a la mitad** (25,37 s → 12,50 s de mediana).
+   Parte es la detección; la otra parte es la decisión del analista (16,98 s
+   → 11,64 s), que **no se debe atribuir al cambio**: es la misma persona
+   repitiendo el mismo flujo (efecto de práctica) y la espera variable del
+   refresco de la app.
+3. **Ciclo completo:** medición → incumplimiento de una cota → cambio de
+   diseño (sin relajar el requerimiento) → nueva medición que cumple.
+
+### Limitaciones
+
+- n = 5, un solo analista que conocía el flujo (afecta la decisión, no la
+  detección ni la acción).
+- IDLE depende de una conexión abierta: si se cae, la detección vuelve a
+  depender del chequeo de respaldo (60 s) hasta que reconecta (1 s a 1 min).
