@@ -10,6 +10,144 @@
 
 ---
 
+## Entrada 12 — 2026-10-18: Medir, encontrar el límite y ajustar el diseño
+
+### Contexto
+
+Con los tres casos de uso implementados, faltaban dos mediciones para las
+Conclusiones: cuánto tarda la contención cuando la decide la automatización
+(en lugar del analista) y cuánto tarda la contención de CU-03, que todavía no
+se había medido. La sesión siguió el mismo ciclo que ya había dado resultado
+el 14/10 (la campaña de medición que llevó a agrupar alertas y a diseñar la
+automatización): **medir contra la infraestructura real, leer los números,
+y cambiar el diseño donde no alcanzan**.
+
+### La contención automática
+
+Se repitió el método de la campaña del 14/10 (fuerza bruta SSH y archivo
+EICAR contra la víctima), pero con la automatización en modo activo: tres
+corridas por caso de uso, ninguna intervención humana. Para medir se habilitó
+una política de laboratorio sin la condición de reputación (la de producción
+exige que AbuseIPDB califique la IP con 80 o más, y la del laboratorio no la
+tiene) y se subió el cortacircuitos para que no interrumpiera la serie; todo
+por la API de administración, auditado, y restaurado al terminar.
+
+Las seis corridas se contuvieron solas: contención p50 **1,51 s** y p95
+**1,96 s**, contra 21,1 s y 31,3 s de la contención manual. La diferencia es
+exactamente la que la campaña del 14/10 había anticipado: la decisión del
+analista era el 94 % del tiempo; decidida por una política, tarda 0,25 s. Un
+detalle que aparece solo midiendo: la primera corrida de fuerza bruta tardó
+0,83 s en decidir y las siguientes 0,25 s, porque la política se evalúa
+después de consultar la reputación de la IP y las corridas siguientes usaron
+la caché. Un atacante nuevo paga ese costo.
+
+### CU-03: la medición encuentra un límite
+
+Cinco corridas de CU-03 con contención manual: llega la campaña, el usuario
+la reporta, el analista pone el correo en cuarentena desde el celular. La
+contención total (p50 25,4 s) es del mismo orden que la de los otros casos y
+cumple la cota de 60 s. La acción es la más rápida de los tres casos (0,10 s
+para mover los correos en los dos buzones). Pero la **detección** dio p50
+6,8 s y p95 11,8 s: no cumple la cota de 5 s del RNF-05 en tres de cinco
+corridas.
+
+La causa estaba en el diseño, no en la infraestructura: el orquestador
+revisaba el buzón de reportes cada 15 segundos, así que un reporte podía
+esperar hasta 15 segundos antes de existir como incidente. Las cotas se
+habían definido con CU-01 y CU-02, donde la alerta la empuja Wazuh en el
+momento.
+
+### La decisión: cambiar el diseño, no el requerimiento
+
+Había dos salidas. Acotar el RNF-05 a las alertas de Wazuh y definir una cota
+más laxa para el correo era rápido, pero era aceptar el número en vez de
+mejorarlo. La otra era que el orquestador se enterara del reporte en el
+momento, igual que con Wazuh. IMAP tiene un mecanismo estándar para eso,
+**IDLE**: el cliente deja una conexión abierta sobre la carpeta y el servidor
+avisa apenas llega un correo. La librería que ya se usaba lo soporta, así que
+el cambio quedó contenido en el único archivo que conoce IMAP
+(`mailProvider.js`), coherente con el diseño que aísla al proveedor de correo
+(en Microsoft Graph o Gmail, el equivalente son las suscripciones).
+
+Dos detalles del diseño: la conexión puede caerse, así que reconecta con una
+espera creciente (de 1 segundo a 1 minuto) y, al reconectar, lee por las
+dudas lo que haya llegado mientras tanto; y el chequeo periódico no
+desaparece, queda como red de seguridad cada 60 segundos. Si un aviso llega
+mientras se está leyendo el buzón, se vuelve a leer al terminar: no se pierde.
+
+### Una revisión que encuentra un error de infraestructura
+
+Al pasar los diagramas de la tesis a formato vectorial, el diagrama de
+arquitectura se dibujó a partir de los security groups reales de Terraform.
+Ahí apareció que el manager de Wazuh solo aceptaba conexiones de agentes
+desde la víctima: el agente del servidor de correo, instalado en la sesión
+anterior, nunca había podido registrarse. No afectaba a CU-03, pero sí a la
+evolución prevista (los logs del antispam llegan por ese agente). Se corrigió
+agregando el grupo del servidor de correo a la regla.
+
+### Resultado
+
+- Contención automática medida y documentada: p50 1,51 s, p95 1,96 s.
+- CU-03 medido: cumple la contención, no la detección; cambio de diseño a
+  IMAP IDLE implementado y con tests (210 en total).
+- Pendiente: desplegar y volver a medir CU-03 para cerrar el ciclo con datos.
+
+---
+
+## Entrada 11 — 2026-10-17: CU-03, el tercer caso de uso, y una campaña en vez de un correo
+
+### Contexto
+
+La propuesta comprometía tres pruebas de concepto: fuerza bruta (CU-01),
+equipo infectado (CU-02) y correo malicioso (CU-03). La tercera era la que
+tenía más distancia entre lo comprometido y lo construido: no existía ningún
+componente de correo en la infraestructura.
+
+### Un servidor de correo de laboratorio
+
+Se descartó integrar Gmail o Microsoft 365 para el prototipo: dependen de
+cuentas externas, de tokens que vencen y de permisos de administrador de un
+dominio. En su lugar se agregó una instancia propia con Postfix y Dovecot,
+creada desde Terraform como el resto, en un dominio ficticio y sin exponer el
+puerto de correo a internet. El orquestador entra a los buzones con un
+usuario maestro que el servidor solo acepta desde su IP, el equivalente de
+laboratorio del permiso de lectura y escritura de correo de Microsoft Graph.
+Toda la integración vive en un único archivo, así que migrar a un proveedor
+real es reescribir ese archivo.
+
+### El reporte del usuario y la campaña
+
+El usuario reenvía el correo sospechoso como adjunto al buzón de reportes,
+igual que los botones de "reportar phishing" de Outlook y Gmail; así se
+conserva el identificador del mensaje (Message-ID), que es la clave para
+encontrarlo en todos los buzones. El incidente no es un correo sino una
+**campaña**: se agrupan los reportes del mismo mensaje y, después, los de
+variantes con otro asunto o remitente que comparten un indicador fuerte (el
+mismo adjunto, el mismo dominio de enlace, la misma dirección de respuesta).
+A partir de esos indicadores, el sistema busca en los buzones otros correos
+de la campaña y los propone como candidatos; la cuarentena de esos la decide
+siempre un analista, porque un error ahí saca correo legítimo de varias
+personas.
+
+### Escala
+
+Se analizó qué pasaría con una campaña de miles de correos. Dos ajustes se
+hicieron en el momento (la cuarentena abre una conexión por buzón para toda
+la campaña, y los reportes de variantes se suman a la campaña abierta); el
+resto (un índice de mensajes en lugar de recorrer buzones, cuarentena en
+segundo plano, candidatos agrupados por variante, límite de impacto) quedó
+como trabajo futuro, junto con un antispam (Rspamd) como segunda fuente de
+detección.
+
+### Resultado
+
+CU-03 probado contra la infraestructura real: campaña con dos variantes y un
+correo legítimo; la búsqueda encontró las dos variantes y dejó afuera el
+legítimo; la cuarentena en bloque movió los correos elegidos y se verificó en
+los buzones.
+
+---
+
 ## Entrada 10 — 2026-10-16: Cerrar el caso, poner límites a la automatización, y una app en un solo idioma
 
 ### Contexto

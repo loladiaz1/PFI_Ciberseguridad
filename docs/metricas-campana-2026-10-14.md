@@ -248,13 +248,20 @@ cuarentena.
    CU-01/CU-02, donde la alerta la emite Wazuh.
 3. **La acción es la más rápida de los tres casos** (0,10 s): mover los
    correos por IMAP en dos buzones, contra ~0,2 s de la API de Wazuh.
-4. **Decisión a tomar a partir del resultado** (pendiente): (a) acotar RNF-05
-   a las alertas de Wazuh y definir una cota propia para el reporte de
-   correo, o (b) bajar la detección: IMAP IDLE (el servidor avisa al instante
-   cuando llega un reporte, en vez de consultar cada 15 s) o un intervalo
-   más corto.
+4. **Decisión tomada a partir del resultado (18/10):** se descartó acotar
+   RNF-05 a las alertas de Wazuh (hubiera sido aceptar el número en vez de
+   mejorarlo) y se cambió el diseño: el orquestador pasa a enterarse de los
+   reportes por **IMAP IDLE** (el servidor avisa en el momento en que llega un
+   correo) y el chequeo periódico queda solo como respaldo cada 60 s. La
+   medición después del cambio está en la sección 8.
 
 ### Limitaciones
 
 - n = 5, un solo analista que esperaba el incidente; laboratorio con dos
   buzones.
+
+## 8. CU-03 después del cambio a IMAP IDLE — pendiente
+
+> Se completa con la medición posterior al deploy: mismas 3-5 corridas que la
+> sección 7 (`send-phish` → cuarentena → cierre), para comparar la detección
+> antes (chequeo cada 15 s: p50 6,82 s / p95 11,83 s) y después (IDLE).

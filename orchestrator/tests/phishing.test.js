@@ -197,10 +197,25 @@ describe("lectura del buzon de reportes", () => {
     expect(await pollReports()).toBe(0);
   });
 
-  test("arranca el intervalo cuando hay configuracion", () => {
+  test("un aviso que llega durante una lectura no se pierde: se lee de nuevo al terminar", async () => {
+    let release;
+    mailProvider.fetchReports.mockImplementationOnce(() => new Promise((r) => (release = r))).mockResolvedValue(0);
+    const first = pollReports();
+    await pollReports(); // llega otro aviso mientras la primera sigue
+    expect(mailProvider.fetchReports).toHaveBeenCalledTimes(1);
+    release(0);
+    await first;
+    await new Promise((r) => setImmediate(r));
+    await new Promise((r) => setImmediate(r));
+    expect(mailProvider.fetchReports).toHaveBeenCalledTimes(2);
+  });
+
+  test("arranca el aviso por IDLE y el chequeo de respaldo cuando hay configuracion", () => {
     jest.spyOn(console, "log").mockImplementation(() => {});
     const timer = startReportPolling();
     expect(timer).not.toBeNull();
+    expect(mailProvider.watchReports).toHaveBeenCalledWith(expect.any(Function));
+    mailProvider.watchReports.mock.calls[0][0](); // el aviso dispara una lectura
     clearInterval(timer);
   });
 });

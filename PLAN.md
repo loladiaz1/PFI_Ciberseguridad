@@ -208,7 +208,7 @@ Detalle completo en `CORRECCIONES para 75%.md`; registro en `progress.md` (sesi�
 - [x] Agrupamiento de incidentes del mismo ataque (14/10, PR #11)
 - [x] Usuarios reales con roles admin / analyst / auditor y registro con aprobación (RF-13) (14/10, PR #11)
 - [x] **Automatización según contexto** (políticas configurables por el admin, inventario de activos, simulación, exclusiones, modo off) (14/10, PR #13)
-- [ ] Medir la contención automática (2-3 corridas por caso de uso) para comparar con la manual en las Conclusiones
+- [x] Medir la contención automática (18/10: 3 corridas por caso de uso, p50 1,51 s / p95 1,96 s; `docs/metricas-campana-2026-10-14.md` sección 6)
 - [x] CU-03 phishing reportado: mail server de laboratorio, ingesta por IMAP, campaña 1:N, cuarentena / restauración en bloque, app (17/10, probado contra infra real: PR #16)
 - [x] Búsqueda de correos similares de la campaña (IOCs: hash, URL/dominio, Reply-To, IP de envío, remitente, asunto; candidatos que elige el analista) (17/10, probada contra infra real: incidente #1361, PR #19)
 - [x] Escala de campañas, parte 1 (17/10): cuarentena / restauración con una conexión por buzón para toda la campaña; un reporte de otra variante (otro Message-ID, mismo indicador fuerte) se suma a la campaña abierta
