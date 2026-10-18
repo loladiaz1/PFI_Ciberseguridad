@@ -119,3 +119,142 @@ ejecuciones, redondeado a un valor fácil de verificar.
   Wazuh bajo carga.
 - La línea de base de 8-14 minutos proviene de la literatura citada en la
   tesis, no de una medición propia del modelo tradicional en este entorno.
+
+## 6. Contención automática — 18/10/2026
+
+Complemento de la campaña: los mismos casos de uso, pero contenidos por la
+**automatización según contexto** (`orchestrator/src/automation.js`), sin
+intervención del analista. Es la comparación que piden las Conclusiones:
+contención manual (humano en el ciclo) frente a automática (humano sobre el
+ciclo, con políticas aprobadas por un administrador).
+
+### Método
+
+- Misma infraestructura real (manager Wazuh 4.8.2, víctima con agente,
+  orquestador en producción) y mismo método de disparo que el 14/10:
+  fuerza bruta SSH contra la víctima (CU-01) y archivo EICAR en la carpeta
+  vigilada (CU-02), con reinicio de la víctima entre corridas.
+- Configuración durante la medición, por la API de administración y
+  auditada: modo **activo**; política "Fuerza bruta contra activo de
+  criticidad baja (laboratorio)" habilitada (la política de producción exige
+  reputación de AbuseIPDB ≥ 80, que la IP del laboratorio no tiene); política
+  "Malware confirmado por VirusTotal" (≥ 10 motores) sin cambios; víctima con
+  criticidad **baja** en el inventario; cortacircuitos subido de 5 a 50
+  acciones / 10 min para que no interrumpa la medición.
+- Al terminar se restauró todo: modo **simulación**, política de laboratorio
+  deshabilitada, cortacircuitos en 5 / 10 min.
+- Tiempos y estadísticos: los mismos que en la sección 1 (`automatedContainment`
+  de `GET /api/v1/metrics`, separado de la contención manual).
+
+### Resultados
+
+| Tiempo | CU-01 (fuerza bruta) | CU-02 (malware) |
+|---|---|---|
+| Detección → ingesta | n = 3 · p50 **1,13 s** · p95 **1,71 s** | n = 3 · p50 **1,26 s** · p95 **1,26 s** |
+| Ejecución de la acción | n = 3 · p50 **0,21 s** · p95 **0,21 s** | n = 3 · p50 **0,20 s** · p95 **0,29 s** |
+| Contención total automática | n = 3 · p50 **1,83 s** · p95 **1,96 s** | n = 3 · p50 **1,51 s** · p95 **1,59 s** |
+
+**Ambos casos de uso (6 corridas):** contención automática p50 **1,51 s**,
+p95 **1,96 s**, mínimo 1,38 s, máximo 1,96 s, promedio 1,63 s.
+
+| Incidente | Caso | Detección → ingesta | Decisión automática (ingesta → mitigado) | Acción | Contención |
+|---|---|---|---|---|---|
+| #1362 | CU-01 | 0,99 s | 0,83 s | 0,21 s | 1,83 s |
+| #1363 | CU-01 | 1,13 s | 0,26 s | 0,21 s | 1,38 s |
+| #1364 | CU-01 | 1,71 s | 0,25 s | 0,20 s | 1,96 s |
+| #1365 | CU-02 | 1,25 s | 0,24 s | 0,20 s | 1,49 s |
+| #1366 | CU-02 | 1,26 s | 0,34 s | 0,29 s | 1,59 s |
+| #1367 | CU-02 | 1,26 s | 0,24 s | 0,20 s | 1,51 s |
+
+Las 6 quedaron con `automationDecision = executed` y su evento de auditoría
+con actor `automation` y la política aplicada.
+
+### Lectura
+
+1. **La decisión pasa de ~20 s a ~0,25 s.** En la contención manual, la
+   decisión del analista era el 94 % del tiempo (p50 19,9 s). Automatizada,
+   la decisión (evaluar la política y ejecutar) tarda p50 0,25 s; lo que queda
+   es casi todo detección (~1,2 s).
+2. **Contención automática frente a manual:** p50 1,51 s contra 21,1 s
+   (**14 veces menor**, −92,9 %); p95 1,96 s contra 31,3 s (16 veces menor).
+3. **Frente a la línea de base de 8-14 minutos:** entre 318 y 557 veces menor
+   (p50), una reducción del **99,7 %**.
+4. **Todas las corridas cumplen las cotas propuestas** con amplio margen
+   (detección ≤ 5 s, ejecución ≤ 2 s, contención ≤ 60 s).
+5. **El enriquecimiento pesa en la primera corrida de CU-01** (#1362: 0,83 s
+   de decisión contra 0,25 s de las siguientes): la política se evalúa
+   después de consultar VirusTotal y AbuseIPDB, y las corridas 2 y 3 usaron
+   la caché de la misma IP. Un atacante nuevo paga ese costo (~0,6 s).
+
+### Limitaciones
+
+- n = 3 por caso de uso: alcanza para mostrar el orden de magnitud, no para
+  un p95 estable.
+- Política de laboratorio sin condición de reputación: en producción la
+  política de fuerza bruta exige reputación ≥ 80 en AbuseIPDB, así que una IP
+  sin historial no se bloquearía sola (queda para el analista). La medición
+  muestra el tiempo de la contención automática cuando una política aplica,
+  no con qué frecuencia aplica.
+- Misma IP atacante en las 3 corridas de CU-01 (caché de enriquecimiento),
+  una sola víctima, sin carga concurrente.
+
+## 7. CU-03 (phishing reportado), contención manual — 18/10/2026
+
+### Método
+
+- Infraestructura real: servidor de correo de laboratorio (Postfix + Dovecot),
+  orquestador en producción (lee el buzón de reportes por IMAP cada 15 s),
+  app en el celular por Tailscale con refresco cada 10 s.
+- 5 corridas: `send-phish` (llega la campaña a alice y bob y alice la reporta
+  reenviando el original a `phishing@`) → el analista abre el incidente,
+  toca PONER EN CUARENTENA con step-up y cierra el caso como verdadero
+  positivo (cerrarlo hace que la corrida siguiente abra un incidente nuevo
+  en vez de sumarse a la misma campaña).
+- La "alerta" de CU-03 es la llegada del reporte al buzón `phishing@`
+  (fecha interna IMAP). Detección → ingesta incluye la espera del chequeo
+  periódico del buzón (0 a 15 s).
+- Verificado en los Maildir: los correos de la campaña quedaron en
+  `Quarantine` de ambos buzones; el correo legítimo siguió en el INBOX.
+
+### Resultados
+
+| Tiempo | CU-03 (n = 5) |
+|---|---|
+| Detección → ingesta | p50 **6,82 s** · p95 **11,83 s** (mín. 3,83 s) |
+| Ejecución de la acción (cuarentena por IMAP en los buzones) | p50 **0,10 s** · p95 **0,11 s** |
+| Decisión del analista (ingesta → cuarentena) | p50 **16,98 s** · p95 **31,88 s** |
+| Contención total | p50 **25,37 s** · p95 **35,71 s** · promedio 26,81 s |
+
+| Incidente | Detección → ingesta | Decisión | Acción | Contención |
+|---|---|---|---|---|
+| #1368 | 3,88 s | 16,98 s | 0,11 s | 20,85 s |
+| #1369 | 10,83 s | 14,54 s | 0,10 s | 25,37 s |
+| #1370 | 3,83 s | 31,88 s | 0,10 s | 35,71 s |
+| #1371 | 11,83 s | 19,87 s | 0,09 s | 31,69 s |
+| #1372 | 6,82 s | 13,60 s | 0,09 s | 20,42 s |
+
+En #1368 la búsqueda de similares encontró además una variante de la
+campaña de una prueba anterior (mismo adjunto), que entró en la misma
+cuarentena.
+
+### Lectura
+
+1. **La contención de CU-03 (p50 25,4 s) es del mismo orden que la de CU-01 y
+   CU-02 (21,1 s)** y cumple la cota de contención (≤ 60 s) con margen.
+2. **La diferencia está en la detección:** 6,8 s de mediana contra ~1,3 s de
+   Wazuh, por el chequeo periódico del buzón cada 15 s. **No cumple la cota
+   de detección de RNF-05 (≤ 5 s)** en 3 de 5 corridas, ni la de "visible en
+   la app ≤ 15 s" (detección + hasta 10 s de refresco). Las cotas salieron de
+   CU-01/CU-02, donde la alerta la emite Wazuh.
+3. **La acción es la más rápida de los tres casos** (0,10 s): mover los
+   correos por IMAP en dos buzones, contra ~0,2 s de la API de Wazuh.
+4. **Decisión a tomar a partir del resultado** (pendiente): (a) acotar RNF-05
+   a las alertas de Wazuh y definir una cota propia para el reporte de
+   correo, o (b) bajar la detección: IMAP IDLE (el servidor avisa al instante
+   cuando llega un reporte, en vez de consultar cada 15 s) o un intervalo
+   más corto.
+
+### Limitaciones
+
+- n = 5, un solo analista que esperaba el incidente; laboratorio con dos
+  buzones.
