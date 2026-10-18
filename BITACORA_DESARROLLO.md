@@ -85,12 +85,24 @@ anterior, nunca había podido registrarse. No afectaba a CU-03, pero sí a la
 evolución prevista (los logs del antispam llegan por ese agente). Se corrigió
 agregando el grupo del servidor de correo a la regla.
 
+### Volver a medir
+
+Con el cambio desplegado se repitieron las cinco corridas de CU-03. La
+detección bajó de 6,8 s a 0,84 s de mediana y de 11,8 s a 1,29 s en el peor
+caso: las cinco corridas cumplen la cota que antes fallaba, y CU-03 quedó en
+el mismo orden que los casos que reciben la alerta de Wazuh. La contención
+total también bajó a la mitad, pero solo una parte se explica por el cambio:
+la decisión del analista fue más rápida porque era la misma persona
+repitiendo el mismo flujo, y eso se registró como tal en lugar de
+atribuírselo al diseño.
+
 ### Resultado
 
 - Contención automática medida y documentada: p50 1,51 s, p95 1,96 s.
-- CU-03 medido: cumple la contención, no la detección; cambio de diseño a
-  IMAP IDLE implementado y con tests (210 en total).
-- Pendiente: desplegar y volver a medir CU-03 para cerrar el ciclo con datos.
+- CU-03: la medición encontró una detección fuera de la cota (p50 6,8 s); el
+  diseño cambió a IMAP IDLE (210 tests) y la nueva medición cumple
+  (p50 0,84 s, p95 1,29 s). El ciclo medir → encontrar → ajustar → volver a
+  medir quedó completo y con datos.
 
 ---
 
