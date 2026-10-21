@@ -1,5 +1,16 @@
 # Campaña de medición de tiempos de respuesta — 14/10/2026
 
+> **Corrección 18/10 — línea de base.** La cifra de "8-14 minutos del modelo
+> tradicional" que se usaba como comparación no tiene fuente verificable. Se
+> reemplaza por **unos 10 minutos de evaluación por alerta** en un SOC
+> comercial (Kersten, Mulders, Zambon, Snijders y Allodi, "Give Me
+> Structure", SOUPS 2023, USENIX, pp. 97-111: *"we estimated an average
+> assessment time of 10 minutes per alert"*, estimación hecha con los analistas
+> T2/T3 de ese SOC). Es un **piso**: no incluye el acceso remoto en una guardia
+> pasiva (equipo, VPN, consola), así que la mejora real es como mínimo la
+> calculada. Contexto propio, sin calcular contra él: MTTR estimado de 30 a 60
+> minutos (Entrevista 3 del relevamiento).
+>
 > Base para la tesis: corrección crítica de E50 (RNF-05 y "SLA" sin cota
 > numérica) y capítulo de Conclusiones con métricas (requisito de E75).
 > Datos leídos de la base de producción (`GET /api/v1/metrics` y la tabla
@@ -24,8 +35,8 @@
     confirmada hasta que Wazuh ejecutó la acción (login a la API + comando).
   - *Contención*: desde la alerta hasta el incidente mitigado. Incluye que el
     incidente aparezca en la app, la decisión del analista y el step-up
-    biométrico: es el valor comparable con los 8-14 minutos del modelo de
-    acceso remoto tradicional (VPN + consola).
+    biométrico: es el valor que se compara con la línea de base (~10 minutos
+    de evaluación por alerta, Kersten et al., 2023; ver la nota del inicio).
 - **Estadísticos:** mediana (p50) y percentil 95 (p95) por rango más cercano
   (siempre un valor observado). Con n = 6, el p95 coincide con el máximo.
 - Los relojes del manager y del orquestador se sincronizan por NTP (Amazon
@@ -69,10 +80,10 @@ app (hasta 10 s), la lectura del incidente, el step-up y la confirmación.
    alrededor de 1,5 s. El **94 %** del tiempo de contención es la decisión
    humana (p50 19,9 s), que además incluye hasta 10 s de espera del refresco
    de la app.
-2. **Frente a la línea de base de 8-14 minutos** (480-840 s), la contención
-   mediana de 21,1 s es entre **23 y 40 veces menor**; tomando el peor caso
-   medido (p95, 31,3 s), sigue siendo entre 15 y 27 veces menor, una
-   reducción del **93,5 % al 96,3 %**.
+2. **Frente a la línea de base de ~10 minutos** (600 s, piso; ver la nota del
+   inicio), la contención mediana de 21,1 s es **28 veces menor** (−96,5 %);
+   tomando el peor caso medido (p95, 31,3 s), sigue siendo **19 veces menor**
+   (−94,8 %).
 3. **La detección es muy estable:** en CU-02, las 15 mediciones caen entre
    1,24 y 1,27 s. En CU-01 varía más (0,77-1,71 s), lo esperable en una regla
    de correlación por frecuencia.
@@ -101,7 +112,8 @@ ejecuciones, redondeado a un valor fácil de verificar.
 - **SLA de contención (RNF-07 / CU-01 / CU-02).** El sistema debe permitir
   completar la contención de un incidente, desde la alerta hasta la acción
   ejecutada, en un plazo máximo de 60 segundos (percentil 95), frente a los
-  8-14 minutos del modelo de acceso remoto tradicional.
+  ~10 minutos que insume evaluar una sola alerta en un SOC (Kersten et al.,
+  2023).
 
 ## 5. Limitaciones
 
@@ -117,8 +129,10 @@ ejecuciones, redondeado a un valor fácil de verificar.
 - **Entorno de laboratorio:** una víctima, sin carga concurrente. La
   ejecución de la acción podría crecer con muchos agentes o con la API de
   Wazuh bajo carga.
-- La línea de base de 8-14 minutos proviene de la literatura citada en la
-  tesis, no de una medición propia del modelo tradicional en este entorno.
+- La línea de base (~10 minutos, Kersten et al., 2023) es una estimación de
+  un SOC comercial con analistas en su puesto, no una medición propia del
+  modelo tradicional en este entorno; por no incluir el acceso remoto, es un
+  piso.
 
 ## 6. Contención automática — 18/10/2026
 
@@ -177,7 +191,7 @@ con actor `automation` y la política aplicada.
    es casi todo detección (~1,2 s).
 2. **Contención automática frente a manual:** p50 1,51 s contra 21,1 s
    (**14 veces menor**, −92,9 %); p95 1,96 s contra 31,3 s (16 veces menor).
-3. **Frente a la línea de base de 8-14 minutos:** entre 318 y 557 veces menor
+3. **Frente a la línea de base de ~10 minutos:** unas **400 veces menor**
    (p50), una reducción del **99,7 %**.
 4. **Todas las corridas cumplen las cotas propuestas** con amplio margen
    (detección ≤ 5 s, ejecución ≤ 2 s, contención ≤ 60 s).

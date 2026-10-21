@@ -75,6 +75,21 @@ dudas lo que haya llegado mientras tanto; y el chequeo periódico no
 desaparece, queda como red de seguridad cada 60 segundos. Si un aviso llega
 mientras se está leyendo el buzón, se vuelve a leer al terminar: no se pierde.
 
+### Una línea de base sin fuente
+
+Al escribir las Conclusiones apareció un problema más serio que cualquier
+cifra medida: todas las comparaciones se hacían contra "8 a 14 minutos del
+modelo de acceso remoto tradicional", un número que venía de los primeros
+borradores y que no tenía fuente (la devolución de la E50 ya lo había
+marcado, y la cita que lo acompañaba no lo respaldaba). Una búsqueda no
+encontró ningún estudio con esa cifra. Se reemplazó por una fuente revisada
+por pares: en un SOC comercial, la evaluación de una sola alerta por un
+analista de nivel 1 insume en promedio unos 10 minutos (Kersten et al.,
+SOUPS 2023). Es un piso, porque no incluye el acceso remoto de una guardia
+pasiva; así, las comparaciones (28 veces menos para la contención manual,
+unas 400 para la automática) son conservadoras. La conclusión no cambió —de
+minutos a segundos—, pero ahora se puede defender.
+
 ### Una revisión que encuentra un error de infraestructura
 
 Al pasar los diagramas de la tesis a formato vectorial, el diagrama de
