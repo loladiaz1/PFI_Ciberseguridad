@@ -1,0 +1,97 @@
+[
+  {
+    "org_id": 11,
+    "incident_id": 427703,
+    "verdict_real": "false_positive",
+    "prediction": "false_positive",
+    "confidence": 0.987,
+    "probabilities": {
+      "benign_positive": 0.0,
+      "false_positive": 0.987,
+      "true_positive": 0.013
+    },
+    "top_features": {
+      "org_rule_benign_positive": 0.0,
+      "org_rule_true_positive": 0.0172,
+      "org_rule_false_positive": 0.9828,
+      "n_ent_CloudLogonSession": 1,
+      "rule_false_positive": 0.8244
+    }
+  },
+  {
+    "org_id": 181,
+    "incident_id": 91813,
+    "verdict_real": "benign_positive",
+    "prediction": "benign_positive",
+    "confidence": 0.998,
+    "probabilities": {
+      "benign_positive": 0.998,
+      "false_positive": 0.001,
+      "true_positive": 0.001
+    },
+    "top_features": {
+      "org_rule_benign_positive": 1.0,
+      "org_rule_true_positive": 0.0,
+      "org_rule_false_positive": 0.0,
+      "n_ent_CloudLogonSession": 0,
+      "rule_false_positive": 0.2582
+    }
+  },
+  {
+    "org_id": 2603,
+    "incident_id": 98345,
+    "verdict_real": "false_positive",
+    "prediction": "false_positive",
+    "confidence": 0.995,
+    "probabilities": {
+      "benign_positive": 0.001,
+      "false_positive": 0.995,
+      "true_positive": 0.003
+    },
+    "top_features": {
+      "org_rule_benign_positive": 0.0,
+      "org_rule_true_positive": 0.0,
+      "org_rule_false_positive": 1.0,
+      "n_ent_CloudLogonSession": 1,
+      "rule_false_positive": 0.8567
+    }
+  },
+  {
+    "org_id": 6,
+    "incident_id": 181468,
+    "verdict_real": "benign_positive",
+    "prediction": "benign_positive",
+    "confidence": 0.998,
+    "probabilities": {
+      "benign_positive": 0.998,
+      "false_positive": 0.001,
+      "true_positive": 0.001
+    },
+    "top_features": {
+      "org_rule_benign_positive": 1.0,
+      "org_rule_true_positive": 0.0,
+      "org_rule_false_positive": 0.0,
+      "n_ent_CloudLogonSession": 0,
+      "rule_false_positive": 0.0608
+    }
+  },
+  {
+    "org_id": 385,
+    "incident_id": 169329,
+    "verdict_real": "false_positive",
+    "prediction": "false_positive",
+    "confidence": 0.994,
+    "probabilities": {
+      "benign_positive": 0.003,
+      "false_positive": 0.994,
+      "true_positive": 0.004
+    },
+    "top_features": {
+      "org_rule_benign_positive": 0.0,
+      "org_rule_true_positive": 0.0,
+      "org_rule_false_positive": 1.0,
+      "n_ent_CloudLogonSession": 0,
+      "rule_false_positive": 0.0608
+    }
+  }
+]

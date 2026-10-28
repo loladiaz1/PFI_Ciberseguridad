@@ -1,0 +1,239 @@
+{
+  "_comment": "Politicas SUGERIDAS por ml/fortia_ml (minadas en GUIDE). Arrancan deshabilitadas, en modo simulacion, y las aprueba un admin. Siguen valiendo activo critico = solo manual, lista de exclusion y cortacircuitos.",
+  "source": "GUIDE",
+  "scope": "global",
+  "minSupport": 20,
+  "minAgreement": 0.95,
+  "mode": "simulate",
+  "policies": [
+    {
+      "key": "guide-det-9-file-1",
+      "name": "GUIDE detector 9 · File · alertas 1 → no_action",
+      "order": 1,
+      "enabled": false,
+      "useCase": null,
+      "action": null,
+      "conditions": {},
+      "guideConditions": {
+        "detectorId": "9",
+        "dominantEntity": "File",
+        "alerts": "1"
+      },
+      "evidence": {
+        "support": 8546,
+        "true_positive": 81,
+        "benign_positive": 41,
+        "false_positive": 8424,
+        "agreement": 0.9905
+      },
+      "proposedAction": "close-as-benign",
+      "finding": "Accion inexistente en automation.js (solo block-ip, isolate-host, quarantine-email)"
+    },
+    {
+      "key": "guide-det-24-mailmessage-1",
+      "name": "GUIDE detector 24 · MailMessage · alertas 1 → no_action",
+      "order": 2,
+      "enabled": false,
+      "useCase": null,
+      "action": null,
+      "conditions": {},
+      "guideConditions": {
+        "detectorId": "24",
+        "dominantEntity": "MailMessage",
+        "alerts": "1"
+      },
+      "evidence": {
+        "support": 6596,
+        "true_positive": 0,
+        "benign_positive": 6596,
+        "false_positive": 0,
+        "agreement": 1.0
+      },
+      "proposedAction": "close-as-benign",
+      "finding": "Accion inexistente en automation.js (solo block-ip, isolate-host, quarantine-email)"
+    },
+    {
+      "key": "guide-det-82-url-1",
+      "name": "GUIDE detector 82 · Url · alertas 1 → requires_action",
+      "order": 3,
+      "enabled": false,
+      "useCase": null,
+      "action": null,
+      "conditions": {},
+      "guideConditions": {
+        "detectorId": "82",
+        "dominantEntity": "Url",
+        "alerts": "1"
+      },
+      "evidence": {
+        "support": 3787,
+        "true_positive": 3780,
+        "benign_positive": 7,
+        "false_positive": 0,
+        "agreement": 0.9982
+      },
+      "finding": "Sin accion de Fortia para la entidad Url"
+    },
+    {
+      "key": "guide-det-76-user-1",
+      "name": "GUIDE detector 76 · User · alertas 1 → no_action",
+      "order": 4,
+      "enabled": false,
+      "useCase": null,
+      "action": null,
+      "conditions": {},
+      "guideConditions": {
+        "detectorId": "76",
+        "dominantEntity": "User",
+        "alerts": "1"
+      },
+      "evidence": {
+        "support": 3762,
+        "true_positive": 0,
+        "benign_positive": 0,
+        "false_positive": 3762,
+        "agreement": 1.0
+      },
+      "proposedAction": "close-as-benign",
+      "finding": "Accion inexistente en automation.js (solo block-ip, isolate-host, quarantine-email)"
+    },
+    {
+      "key": "guide-det-9-file-2-5",
+      "name": "GUIDE detector 9 · File · alertas 2-5 → no_action",
+      "order": 5,
+      "enabled": false,
+      "useCase": null,
+      "action": null,
+      "conditions": {},
+      "guideConditions": {
+        "detectorId": "9",
+        "dominantEntity": "File",
+        "alerts": "2-5"
+      },
+      "evidence": {
+        "support": 3747,
+        "true_positive": 5,
+        "benign_positive": 6,
+        "false_positive": 3736,
+        "agreement": 0.9987
+      },
+      "proposedAction": "close-as-benign",
+      "finding": "Accion inexistente en automation.js (solo block-ip, isolate-host, quarantine-email)"
+    },
+    {
+      "key": "guide-det-55-user-1",
+      "name": "GUIDE detector 55 · User · alertas 1 → no_action",
+      "order": 6,
+      "enabled": false,
+      "useCase": null,
+      "action": null,
+      "conditions": {},
+      "guideConditions": {
+        "detectorId": "55",
+        "dominantEntity": "User",
+        "alerts": "1"
+      },
+      "evidence": {
+        "support": 3225,
+        "true_positive": 0,
+        "benign_positive": 3225,
+        "false_positive": 0,
+        "agreement": 1.0
+      },
+      "proposedAction": "close-as-benign",
+      "finding": "Accion inexistente en automation.js (solo block-ip, isolate-host, quarantine-email)"
+    },
+    {
+      "key": "guide-det-55-mailmessage-1",
+      "name": "GUIDE detector 55 · MailMessage · alertas 1 → no_action",
+      "order": 7,
+      "enabled": false,
+      "useCase": null,
+      "action": null,
+      "conditions": {},
+      "guideConditions": {
+        "detectorId": "55",
+        "dominantEntity": "MailMessage",
+        "alerts": "1"
+      },
+      "evidence": {
+        "support": 3192,
+        "true_positive": 0,
+        "benign_positive": 3192,
+        "false_positive": 0,
+        "agreement": 1.0
+      },
+      "proposedAction": "close-as-benign",
+      "finding": "Accion inexistente en automation.js (solo block-ip, isolate-host, quarantine-email)"
+    },
+    {
+      "key": "guide-det-24-user-1",
+      "name": "GUIDE detector 24 · User · alertas 1 → no_action",
+      "order": 8,
+      "enabled": false,
+      "useCase": null,
+      "action": null,
+      "conditions": {},
+      "guideConditions": {
+        "detectorId": "24",
+        "dominantEntity": "User",
+        "alerts": "1"
+      },
+      "evidence": {
+        "support": 2745,
+        "true_positive": 0,
+        "benign_positive": 2745,
+        "false_positive": 0,
+        "agreement": 1.0
+      },
+      "proposedAction": "close-as-benign",
+      "finding": "Accion inexistente en automation.js (solo block-ip, isolate-host, quarantine-email)"
+    },
+    {
+      "key": "guide-det-39-file-1",
+      "name": "GUIDE detector 39 · File · alertas 1 → no_action",
+      "order": 9,
+      "enabled": false,
+      "useCase": null,
+      "action": null,
+      "conditions": {},
+      "guideConditions": {
+        "detectorId": "39",
+        "dominantEntity": "File",
+        "alerts": "1"
+      },
+      "evidence": {
+        "support": 2547,
+        "true_positive": 0,
+        "benign_positive": 2547,
+        "false_positive": 0,
+        "agreement": 1.0
+      },
+      "proposedAction": "close-as-benign",
+      "finding": "Accion inexistente en automation.js (solo block-ip, isolate-host, quarantine-email)"
+    },
+    {
+      "key": "guide-det-137-ip-1",
+      "name": "GUIDE detector 137 · Ip · alertas 1 → no_action",
+      "order": 10,
+      "enabled": false,
+      "useCase": null,
+      "action": null,
+      "conditions": {},
+      "guideConditions": {
+        "detectorId": "137",
+        "dominantEntity": "Ip",
+        "alerts": "1"
+      },
+      "evidence": {
+        "support": 2416,
+        "true_positive": 0,
+        "benign_positive": 2416,
+        "false_positive": 0,
+        "agreement": 1.0
+      },
+      "proposedAction": "close-as-benign",
+      "finding": "Accion inexistente en automation.js (solo block-ip, isolate-host, quarantine-email)"
+    }
+  ]
+}

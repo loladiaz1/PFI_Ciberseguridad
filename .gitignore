@@ -25,6 +25,14 @@ ARQUITECTURA_TECNICA.md
 # Reportes de cobertura de Jest (se regeneran con npm run test:coverage)
 coverage/
 
+# ML (ml/): dataset GUIDE (varios GB, se baja de Kaggle), salidas y venv
+data/guide/
+ml/data/
+ml/out/
+ml/.venv/
+__pycache__/
+.pytest_cache/
+
 # Anexo de pruebas: el HTML es intermedio, se versiona el PDF
 docs/anexo-pruebas/anexo-pruebas.html
 
