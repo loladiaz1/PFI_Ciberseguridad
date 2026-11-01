@@ -285,7 +285,7 @@ export const S = {
     recommendationIsolate: (severity: string, host: string) =>
       `${host} disparó una regla de severidad ${severity}. Aislarlo corta todo su tráfico de red, salvo el canal con el manager de Wazuh.`,
     recommendationQuarantine: (severity: string, reporters: number) =>
-      `${reporters === 1 ? "Una persona reportó" : `${reporters} personas reportaron`} este correo (severidad ${severity}). La cuarentena lo saca de todos los buzones donde llegó y se puede deshacer.`,
+      `${reporters === 0 ? "Una regla de correo, vía Wazuh, detectó" : reporters === 1 ? "Una persona reportó" : `${reporters} personas reportaron`} este correo (severidad ${severity}). La cuarentena lo saca de todos los buzones donde llegó y se puede deshacer.`,
     recommendedAction: "Acción recomendada:",
     readOnly: "Acceso de solo lectura: un analista tiene que ejecutar esta acción.",
     closeCase: "Cerrar caso",
@@ -304,6 +304,7 @@ export const S = {
     replyTo: "Responder a",
     replyToDiffers: "distinto del remitente: típico de phishing",
     reportedBy: "Reportado por",
+    detectedByRule: "Detectado por regla de correo, vía Wazuh",
     links: "Enlaces",
     attachments: "Adjuntos",
     vt: (n: number | null | undefined) =>
@@ -316,6 +317,7 @@ export const S = {
         : "VirusTotal: sin detecciones",
     // Alerta de la linea de tiempo en CU-03 (no hay regla de Wazuh).
     reportAlert: (grouped: boolean) => `Reporte de un usuario${grouped ? " (agrupado)" : ""}`,
+    ruleAlert: (grouped: boolean) => `Regla de correo, vía Wazuh${grouped ? " (agrupado)" : ""}`,
     status: {
       pending: "Pendiente",
       quarantined: "En cuarentena",

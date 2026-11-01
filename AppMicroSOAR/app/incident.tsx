@@ -387,7 +387,7 @@ export default function IncidentDetail() {
                             <Text style={styles.recTitle}>{S.incident.recommendationTitle}</Text>
                             <Text selectable style={styles.recText}>
                                 {action === "quarantine-email"
-                                    ? S.incident.recommendationQuarantine(severity.label.toLowerCase(), incident.alertCount)
+                                    ? S.incident.recommendationQuarantine(severity.label.toLowerCase(), new Set(emails.flatMap((e) => e.reportedBy)).size)
                                     : action === "block-ip"
                                     ? S.incident.recommendationBlock(severity.label.toLowerCase(), incident.hostname)
                                     : S.incident.recommendationIsolate(severity.label.toLowerCase(), incident.hostname)}
@@ -436,6 +436,8 @@ export default function IncidentDetail() {
                                               <Text selectable style={styles.timelineMain}>
                                                   {entry.ruleId === "user-report"
                                                       ? S.email.reportAlert(entry.grouped)
+                                                      : entry.ruleId === "mail-rule"
+                                                      ? S.email.ruleAlert(entry.grouped)
                                                       : S.incident.alertRule(entry.ruleId, entry.grouped)}
                                               </Text>
                                               {entry.detail ? <Text selectable style={styles.timelineSub}>{entry.detail}</Text> : null}

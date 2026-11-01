@@ -70,6 +70,12 @@ function isRelevantAlert(alert) {
   return groups.some((g) => RELEVANT_GROUPS.includes(g));
 }
 
+// Alerta de la regla de correo (integrations/mail-scan.py): va a la ingesta de
+// CU-03 (src/email.js), no a este modelo de incidente.
+function isPhishingAlert(alert) {
+  return (alert?.rule?.groups ?? []).includes("phishing");
+}
+
 // Caso de uso del incidente. Los anteriores a la columna useCase se deducen
 // de srcIp, como antes de CU-03 (un correo nunca tiene srcIp).
 function useCaseOf(incident) {
@@ -84,4 +90,4 @@ async function backfillUseCases(db) {
   return a.count + b.count;
 }
 
-module.exports = { normalizeWazuhAlert, isRelevantAlert, alertDetailOf, useCaseOf, backfillUseCases };
+module.exports = { normalizeWazuhAlert, isRelevantAlert, isPhishingAlert, alertDetailOf, useCaseOf, backfillUseCases };
