@@ -110,11 +110,13 @@ export function EmailCard({ emails, canAct, selected, onToggle, onDismiss, onSea
 
       {candidates.map((email) => {
         const pending = email.status === "pending";
+        // Un candidato restaurado se puede volver a elegir; descartar es solo para pendientes.
+        const selectable = pending || email.status === "restored";
         const checked = selected.includes(email.id);
         return (
           <View key={email.id} style={[styles.candidate, email.status === "dismissed" && styles.dismissed]}>
             <View style={styles.headerRow}>
-              {pending && canAct ? (
+              {selectable && canAct ? (
                 <TouchableOpacity style={styles.check} onPress={() => onToggle(email.id)}>
                   <MaterialCommunityIcons
                     name={checked ? "checkbox-marked" : "checkbox-blank-outline"}
