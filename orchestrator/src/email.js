@@ -5,21 +5,26 @@
 //   - hoy: un usuario reenvia el correo sospechoso COMO ADJUNTO (.eml) al
 //     buzon de reportes (phishing@), igual que el boton "Report phishing" de
 //     Outlook / Gmail. El orchestrator lo lee por IMAP cada pocos segundos.
-//   - futuro: el antispam (Rspamd) lo detecta y llega por Wazuh al webhook,
-//     con source "gateway" y su puntaje.
+//   - una regla de correo de laboratorio (integrations/mail-scan.py) lo detecta
+//     y llega por Wazuh al webhook, con source "gateway". Wazuh solo transporta.
+//     A futuro, el antispam (Rspamd) por la misma ruta, con su puntaje.
 // La clave del caso es el Message-ID: el mismo correo tiene el mismo
-// Message-ID en todos los buzones, en todos los reportes y en el log del
-// antispam. Varios reportes del mismo correo = un solo incidente.
+// Message-ID en todos los buzones, en todos los reportes y en la alerta.
+// Varios reportes del mismo correo = un solo incidente.
 const { prisma } = require("./db");
 const { logAudit } = require("./audit");
 const { mergeTags, USE_CASE_TAG } = require("./closure");
 const { enrichUrl, enrichFile } = require("./enrichment");
 const { runAutomation } = require("./automation");
 const mailProvider = require("./mailProvider");
-const { parseReport } = require("./emailParse");
+const { parseReport, describeMessage } = require("./emailParse");
 const { searchSimilar, findOpenCampaign } = require("./campaign");
 
 const REPORT_RULE_ID = "user-report";
+const GATEWAY_RULE_ID = "mail-rule";
+const GATEWAY_LABEL = "Detectado por regla de correo, vía Wazuh";
+const MESSAGE_ID = /^<[^\s<>]{1,900}>$/;
+const isGateway = (report) => report.source === "gateway";
 // Un reporte sin confirmar es severidad media; si VirusTotal marca una URL o
 // un adjunto, alta. Desde MIN_ENGINES motores: uno solo suele ser un falso
 // positivo de ese motor.
@@ -30,13 +35,14 @@ const MIN_ENGINES = 3;
 const MAX_LOOKUPS = 3;
 
 function reportAlert(incidentId, report, severity) {
+  const gateway = isGateway(report);
   return {
     incidentId,
-    ruleId: REPORT_RULE_ID,
-    ruleDescription: "Correo reportado como phishing",
+    ruleId: gateway ? GATEWAY_RULE_ID : REPORT_RULE_ID,
+    ruleDescription: gateway ? GATEWAY_LABEL : "Correo reportado como phishing",
     severity,
     timestamp: report.receivedAt.toISOString(),
-    detail: report.reporter ? `Reportado por ${report.reporter}` : null,
+    detail: gateway ? report.reason : report.reporter ? `Reportado por ${report.reporter}` : null,
   };
 }
 
@@ -70,7 +76,7 @@ function emailRecord(report) {
     sendingIp: report.sendingIp,
     urls: JSON.stringify(report.urls),
     attachments: JSON.stringify(report.attachments),
-    origin: "reported",
+    origin: isGateway(report) ? "gateway" : "reported",
     reportedBy: JSON.stringify(report.reporter ? [report.reporter] : []),
   };
 }
@@ -90,16 +96,19 @@ async function ingestReport(report) {
     const reporters = JSON.parse(open.reportedBy);
     if (report.reporter && !reporters.includes(report.reporter)) reporters.push(report.reporter);
     // Si la busqueda de similares ya lo habia encontrado, ahora esta confirmado.
+    // "gateway" queda aunque despues lo reporten: la app muestra las dos rutas.
+    const origin = isGateway(report) ? "gateway" : open.origin === "candidate" ? "reported" : open.origin;
     await prisma.incidentEmail.update({
       where: { id: open.id },
-      data: { reportedBy: JSON.stringify(reporters), ...(open.origin === "candidate" ? { origin: "reported" } : {}) },
+      data: { reportedBy: JSON.stringify(reporters), origin },
     });
     const incident = await prisma.incident.update({
       where: { id: open.incidentId },
       data: { alertCount: open.incident.alertCount + 1, lastSeenAt: now },
     });
     await prisma.incidentAlert.create({ data: reportAlert(incident.id, report, incident.severity) });
-    await logAudit("alert_grouped", `Nuevo reporte de ${report.reporter ?? "un usuario"} sumado al incidente #${incident.id}`, null, incident.id);
+    const grouped = isGateway(report) ? `${GATEWAY_LABEL}: sumado al incidente #${incident.id}` : `Nuevo reporte de ${report.reporter ?? "un usuario"} sumado al incidente #${incident.id}`;
+    await logAudit("alert_grouped", grouped, null, incident.id);
     return { incident, created: false };
   }
 
@@ -117,7 +126,7 @@ async function ingestReport(report) {
     await prisma.incidentAlert.create({ data: reportAlert(incident.id, report, incident.severity) });
     await logAudit(
       "alert_grouped",
-      `Otro correo de la campaña reportado por ${report.reporter ?? "un usuario"}: "${report.subject ?? "(sin asunto)"}" (incidente #${incident.id})`,
+      `${isGateway(report) ? `Otro correo de la campaña. ${GATEWAY_LABEL}` : `Otro correo de la campaña reportado por ${report.reporter ?? "un usuario"}`}: "${report.subject ?? "(sin asunto)"}" (incidente #${incident.id})`,
       null,
       incident.id
     );
@@ -126,14 +135,16 @@ async function ingestReport(report) {
     return { incident, created: false };
   }
 
+  const gateway = isGateway(report);
+  const ruleId = gateway ? GATEWAY_RULE_ID : REPORT_RULE_ID;
   const incident = await prisma.incident.create({
     data: {
       source: report.source,
       useCase: "CU-03",
-      ruleId: REPORT_RULE_ID,
-      ruleIds: JSON.stringify([REPORT_RULE_ID]),
+      ruleId,
+      ruleIds: JSON.stringify([ruleId]),
       severity: REPORTED_SEVERITY,
-      ruleDescription: `Phishing reportado: ${report.subject ?? "(sin asunto)"}`,
+      ruleDescription: `Phishing ${gateway ? "detectado" : "reportado"}: ${report.subject ?? "(sin asunto)"}`,
       srcIp: null,
       // El activo afectado es el servidor de correo (inventario de activos).
       hostname: process.env.MAIL_HOSTNAME || "micro-soar-mail",
@@ -149,7 +160,7 @@ async function ingestReport(report) {
   await prisma.incidentAlert.create({ data: reportAlert(incident.id, report, REPORTED_SEVERITY) });
   await logAudit(
     "incident_detected",
-    `Correo reportado por ${report.reporter ?? "un usuario"}: "${report.subject ?? "(sin asunto)"}" de ${report.fromAddress ?? "remitente desconocido"}`,
+    `${gateway ? GATEWAY_LABEL : `Correo reportado por ${report.reporter ?? "un usuario"}`}: "${report.subject ?? "(sin asunto)"}" de ${report.fromAddress ?? "remitente desconocido"}`,
     null,
     incident.id
   );
@@ -166,6 +177,33 @@ async function ingestReport(report) {
 
   const { emails, ...rest } = incident;
   return { incident: rest, created: true };
+}
+
+// Alerta de la regla de correo (webhook de Wazuh, sin autenticacion: el hueco
+// esta declarado). Solo trae message_id, mailbox, reason y delivered_at: el
+// correo se baja de un buzon monitoreado y se lee con el mismo parser que un
+// reporte. Devuelve lo de ingestReport, o { error, detail }.
+async function ingestGatewayAlert(alert) {
+  const { message_id: messageId, mailbox, reason, delivered_at: deliveredAt } = alert?.data ?? {};
+  const receivedAt = new Date(deliveredAt);
+  if (typeof messageId !== "string" || !MESSAGE_ID.test(messageId) || Number.isNaN(receivedAt.getTime())) {
+    return { error: 422, detail: "Alerta de correo inválida" };
+  }
+  if (!mailProvider.isMonitored(mailbox)) return { error: 403, detail: "Buzón no monitoreado" };
+
+  const raw = await mailProvider.fetchMessage(mailbox, messageId);
+  if (!raw) return { error: 404, detail: "El correo no está en el buzón" };
+  const message = await describeMessage(raw);
+  // La busqueda IMAP es por subcadena: confirmar que sea exactamente ese correo.
+  if (message.messageId !== messageId) return { error: 404, detail: "El correo no está en el buzón" };
+
+  return ingestReport({
+    source: "gateway",
+    reporter: null,
+    reason: typeof reason === "string" ? reason.slice(0, 200) : null,
+    receivedAt,
+    ...message,
+  });
 }
 
 // Una pasada por el buzon de reportes. Nunca tira. Si ya hay una en curso,
@@ -206,4 +244,4 @@ function startReportPolling() {
   return setInterval(pollReports, SAFETY_POLL_MS);
 }
 
-module.exports = { parseReport, ingestReport, pollReports, startReportPolling, REPORT_RULE_ID };
+module.exports = { parseReport, ingestReport, ingestGatewayAlert, pollReports, startReportPolling, REPORT_RULE_ID };

@@ -1,0 +1,11 @@
+[Unit]
+Description=Regla de correo de laboratorio (CU-03)
+After=dovecot.service
+
+[Service]
+ExecStart=/usr/bin/python3 -u /usr/local/bin/mail-scan.py
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

@@ -56,6 +56,8 @@ export function EmailCard({ emails, canAct, selected, onToggle, onDismiss, onSea
               </>
             ) : null}
 
+            {email.origin === "gateway" ? <Text style={styles.label}>{S.email.detectedByRule}</Text> : null}
+
             {email.reportedBy.length ? (
               <>
                 <Text style={styles.label}>{S.email.reportedBy}</Text>

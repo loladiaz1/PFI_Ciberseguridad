@@ -1,7 +1,7 @@
 const express = require("express");
 const rateLimit = require("express-rate-limit");
 const { prisma } = require("./db");
-const { normalizeWazuhAlert, isRelevantAlert, alertDetailOf, backfillUseCases } = require("./normalize");
+const { normalizeWazuhAlert, isRelevantAlert, isPhishingAlert, alertDetailOf, backfillUseCases } = require("./normalize");
 const { enrichIp } = require("./enrichment");
 const {
   ROLES,
@@ -24,7 +24,7 @@ const { CATEGORIES, categoryOf, logAudit, backfillIncidentIds } = require("./aud
 const { mitigate } = require("./mitigation");
 const { restoreEmails, dismissCandidate, publicEmail } = require("./emailActions");
 const { searchSimilar } = require("./campaign");
-const { startReportPolling } = require("./email");
+const { startReportPolling, ingestGatewayAlert } = require("./email");
 const {
   MODES,
   CRITICALITIES,
@@ -113,6 +113,20 @@ function alertRecord(incidentId, fields, rawAlert) {
 }
 
 app.post("/api/v1/webhook/wazuh", async (req, res) => {
+  // CU-03: la regla de correo llega por Wazuh y termina en la misma ingesta
+  // que el reporte de un usuario. try/catch: Express 4 no captura rechazos de
+  // handlers async, y sin esto un error tumbaria el proceso.
+  if (isPhishingAlert(req.body)) {
+    try {
+      const result = await ingestGatewayAlert(req.body);
+      if (result.error) return res.status(result.error).json({ detail: result.detail });
+      return res.status(result.created ? 201 : 200).json(result.incident);
+    } catch (err) {
+      console.error("No se pudo procesar la alerta de correo:", err.message);
+      return res.status(502).json({ detail: "No se pudo procesar la alerta de correo" });
+    }
+  }
+
   let fields;
   try {
     fields = normalizeWazuhAlert(req.body);
