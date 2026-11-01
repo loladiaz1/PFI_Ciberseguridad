@@ -73,8 +73,9 @@ export default function IncidentDetail() {
     useFocusEffect(load);
 
     // Al cargar, quedan elegidos los candidatos con un indicador fuerte (mismo
-    // adjunto, enlace, Responder a o IP de envio); los demas, a criterio.
-    const candidateKey = (incident?.emails ?? []).filter((e) => e.origin === "candidate" && e.status === "pending").map((e) => e.id).join(",");
+    // adjunto, enlace, Responder a o IP de envio); los demas, a criterio. Los
+    // restaurados no se eligen solos: el analista acaba de sacarlos.
+    const candidateKey = (incident?.emails ?? []).filter((e) => e.origin === "candidate" && (e.status === "pending" || e.status === "restored")).map((e) => e.id).join(",");
     useEffect(() => {
         const strong = ["attachment", "url", "urlDomain", "replyTo", "sendingIp"];
         setSelected(
@@ -82,7 +83,7 @@ export default function IncidentDetail() {
                 .filter((e) => e.origin === "candidate" && e.status === "pending" && e.matchedBy?.reasons.some((r) => strong.includes(r.type)))
                 .map((e) => e.id)
         );
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- solo cuando cambian los candidatos pendientes
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- solo cuando cambian los candidatos elegibles
     }, [candidateKey]);
 
     const searchSimilar = async () => {
