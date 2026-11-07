@@ -175,4 +175,18 @@ async function listRecent(since) {
   return found;
 }
 
-module.exports = { isEnabled, fetchReports, watchReports, quarantine, restore, listRecent };
+// El correo crudo de un buzon por Message-ID (alerta de la regla de correo,
+// src/email.js), o null si ya no esta. Sin marcarlo como leido: "source" usa
+// BODY.PEEK.
+async function fetchMessage(mailbox, messageId) {
+  return withFolder(mailbox, "INBOX", async (client) => {
+    const uids = await client.search({ header: { "message-id": messageId } }, { uid: true });
+    if (!uids || uids.length === 0) return null;
+    const [message] = await client.fetchAll(uids.slice(0, 1), { uid: true, source: true }, { uid: true });
+    return message?.source ?? null;
+  });
+}
+
+const isMonitored = (mailbox) => config().mailboxes.includes(mailbox);
+
+module.exports = { isEnabled, isMonitored, fetchReports, watchReports, quarantine, restore, listRecent, fetchMessage };

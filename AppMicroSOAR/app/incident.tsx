@@ -73,8 +73,9 @@ export default function IncidentDetail() {
     useFocusEffect(load);
 
     // Al cargar, quedan elegidos los candidatos con un indicador fuerte (mismo
-    // adjunto, enlace, Responder a o IP de envio); los demas, a criterio.
-    const candidateKey = (incident?.emails ?? []).filter((e) => e.origin === "candidate" && e.status === "pending").map((e) => e.id).join(",");
+    // adjunto, enlace, Responder a o IP de envio); los demas, a criterio. Los
+    // restaurados no se eligen solos: el analista acaba de sacarlos.
+    const candidateKey = (incident?.emails ?? []).filter((e) => e.origin === "candidate" && (e.status === "pending" || e.status === "restored")).map((e) => e.id).join(",");
     useEffect(() => {
         const strong = ["attachment", "url", "urlDomain", "replyTo", "sendingIp"];
         setSelected(
@@ -82,7 +83,7 @@ export default function IncidentDetail() {
                 .filter((e) => e.origin === "candidate" && e.status === "pending" && e.matchedBy?.reasons.some((r) => strong.includes(r.type)))
                 .map((e) => e.id)
         );
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- solo cuando cambian los candidatos pendientes
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- solo cuando cambian los candidatos elegibles
     }, [candidateKey]);
 
     const searchSimilar = async () => {
@@ -387,7 +388,7 @@ export default function IncidentDetail() {
                             <Text style={styles.recTitle}>{S.incident.recommendationTitle}</Text>
                             <Text selectable style={styles.recText}>
                                 {action === "quarantine-email"
-                                    ? S.incident.recommendationQuarantine(severity.label.toLowerCase(), incident.alertCount)
+                                    ? S.incident.recommendationQuarantine(severity.label.toLowerCase(), new Set(emails.flatMap((e) => e.reportedBy)).size)
                                     : action === "block-ip"
                                     ? S.incident.recommendationBlock(severity.label.toLowerCase(), incident.hostname)
                                     : S.incident.recommendationIsolate(severity.label.toLowerCase(), incident.hostname)}
@@ -436,6 +437,8 @@ export default function IncidentDetail() {
                                               <Text selectable style={styles.timelineMain}>
                                                   {entry.ruleId === "user-report"
                                                       ? S.email.reportAlert(entry.grouped)
+                                                      : entry.ruleId === "mail-rule"
+                                                      ? S.email.ruleAlert(entry.grouped)
                                                       : S.incident.alertRule(entry.ruleId, entry.grouped)}
                                               </Text>
                                               {entry.detail ? <Text selectable style={styles.timelineSub}>{entry.detail}</Text> : null}

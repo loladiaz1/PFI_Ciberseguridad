@@ -1,0 +1,13 @@
+<!-- Regla del escaner de correo (mail-scan.py). Va dentro de
+     /var/ossec/etc/rules/local_rules.xml en el manager. Antes de instalarla,
+     confirmar que el id 100510 no este usado. El grupo phishing es el que
+     filtra el <integration> de custom-microsoar y el que deriva la alerta en
+     el webhook (src/normalize.js). -->
+<group name="local,phishing,">
+  <rule id="100510" level="10">
+    <decoded_as>json</decoded_as>
+    <field name="scanner">^mail-scan$</field>
+    <description>Regla de correo: $(reason) en $(mailbox)</description>
+    <options>no_full_log</options>
+  </rule>
+</group>
