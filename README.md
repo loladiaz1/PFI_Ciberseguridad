@@ -25,6 +25,8 @@ orchestrator/      # backend Node.js/Express: webhook Wazuh -> filtro -> Inciden
 AppMicroSOAR/      # app móvil Expo/React Native: login, incidentes, step-up biométrico, bloquear / aislar
 .github/workflows/ # CI (plan + tests con cobertura en cada PR) y deploy automático en merge a main
 docs/anexo-pruebas/ # anexo de pruebas y cobertura para la tesis (PDF regenerable)
+ml/                # componente de ML: validación sobre GUIDE (Python, scikit-learn). Ver ml/RESULTADOS.md
+demo-ml/           # demo y prueba local del recomendador (GUION.md, PRUEBA-LOCAL.md)
 ```
 
 ## Estado actual (ver detalle y próximo paso en `progress.md`)
@@ -37,6 +39,7 @@ docs/anexo-pruebas/ # anexo de pruebas y cobertura para la tesis (PDF regenerabl
 - **CU-03** (phishing reportado): ✅ mail server de laboratorio (`terraform/mail.tf`), el usuario reenvía el correo a `phishing@`, el incidente agrupa la campaña (mismo Message-ID o indicadores en común), busca correos similares en los buzones y la app los pone en cuarentena / los restaura en bloque. Probado contra infra real el 17/10.
 - **CI/CD**: ✅ cada PR corre `terraform plan` + tests con umbral de cobertura; cada merge a `main` aplica Terraform (con freno anti-destroy) y deploya el orchestrator vía SSM, sin credenciales guardadas (OIDC). Funcionando desde el 13/10.
 - **Calidad**: ✅ cobertura del orchestrator 98,9% líneas / 92,4% ramas (umbral obligatorio 85%), 210 tests (18/10). Anexo para la tesis en [`docs/anexo-pruebas/`](docs/anexo-pruebas/).
+- **ML** (recomendador de triaje, RF-15 / HU-11): 🟡 fase 1 validada sobre GUIDE (1 M de incidentes reales de SOC, [`ml/RESULTADOS.md`](ml/RESULTADOS.md)); fase 2 en el producto: recomendación por incidente aprendida de los cierres de los analistas y políticas "cerrar sin acción" que adopta un admin. Probado local de punta a punta (25/11); falta la prueba contra infra real. Demo: [`demo-ml/GUION.md`](demo-ml/GUION.md).
 - **Fase 4** (hardening y ensayo): 🟡 security groups cerrados, filtro de ruido de alertas (13/10: 1335 → 15 incidentes reales); falta video de respaldo y ensayo cronometrado.
 
 ## Orchestrator — cómo levantarlo

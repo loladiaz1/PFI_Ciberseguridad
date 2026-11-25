@@ -146,6 +146,7 @@ export const S = {
     test_exercise: "Prueba / ejercicio",
     recurring_attacker: "Atacante recurrente",
     rule_tuning_needed: "Ajustar la regla",
+    auto_closed: "Cierre automático",
   } as Record<string, string>,
 
   tabs: {
@@ -260,8 +261,31 @@ export const S = {
       `${malicious} maliciosos · ${suspicious} sospechosos · ${harmless} inofensivos`,
     abuse: (score: number, reports: number) => `${score}% de confianza de abuso · ${reports} reportes`,
     autoContained: "Contenido automáticamente",
+    autoClosed: "Cerrado automáticamente como ruido conocido",
     autoFailed: "Falló la respuesta automática: requiere acción",
-    simulation: (blockIp: boolean) => `Simulación: ${blockIp ? "bloquearía esta IP" : "aislaría este host"}`,
+    simulation: (action: string | null | undefined) =>
+      `Simulación: ${
+        ({
+          "block-ip": "bloquearía esta IP",
+          "isolate-host": "aislaría este host",
+          "quarantine-email": "pondría el correo en cuarentena",
+          "close-no-action": "cerraría el caso sin acción",
+        } as Record<string, string>)[action ?? ""] ?? "actuaría sobre este caso"
+      }`,
+    // Recomendacion aprendida de los cierres (orchestrator/src/recommender.js).
+    model: {
+      title: "Recomendación del modelo",
+      noAction: "Cerrar sin acción",
+      requiresAction: "Requiere acción",
+      evidence: (agreeing: number, support: number, pct: number, noAction: boolean) =>
+        `${agreeing} de ${support} casos parecidos (${pct} %) ${noAction ? "se cerraron sin acción" : "fueron ataques reales"}.`,
+      basis: (label: string, entity: boolean) => `Basado en: ${label} (${entity ? "historial propio" : "patrón general"})`,
+      mixed: "Historial mixto: la decisión es del analista.",
+      none: "Todavía no hay casos parecidos cerrados: la decisión es del analista. El modelo aprende de cada cierre.",
+      apply: (verdict: string) => `Cerrar como ${verdict}`,
+      note: (agreeing: number, support: number, label: string) =>
+        `Según el historial, ${agreeing} de ${support} casos de ${label} se cerraron sin acción.`,
+    },
     policy: (name: string) => `Política: ${name}`,
     automation: (reason: string) => `Automatización: ${reason}`,
     showMore: "Ver todo",
@@ -464,6 +488,39 @@ export const S = {
       country: (countries: string[]) => `País en ${countries.join(", ")}`,
       maxAssetCriticality: "Criticidad del activo ≤",
       assetCriticality: (c: string) => `Criticidad del activo ≤ ${c}`,
+      minSupport: "Casos del patrón (N) ≥",
+      minAgreement: "Acuerdo (X, de 0,5 a 1) ≥",
+    },
+    closeNoAction: "Cerrar sin acción",
+    quarantine: "Cuarentena del correo",
+    // Recomendador: evaluacion con los cierres reales y politicas aprendidas.
+    learning: {
+      title: "Aprendizaje de los cierres",
+      help: "El modelo aprende de los veredictos de cierre de los analistas: si los casos de un patrón se cierran siempre igual, lo recomienda, y un administrador puede convertirlo en política.",
+      loadError: "No se pudo cargar el recomendador",
+      evaluation: "Evaluación con los casos reales",
+      evaluationHelp: "Cada caso cerrado se recomienda solo con lo que se había cerrado antes de detectarlo (evaluación temporal).",
+      evaluated: (n: number) => `${n} casos cerrados por analistas`,
+      recommended: (n: number, pct: string) => `Recomendó en ${n} (${pct})`,
+      accuracy: (n: number, pct: string) => `Acertó ${n} (${pct})`,
+      policies: (n: number, pct: string, tp: number) =>
+        `Con las políticas sugeridas: ${n} cierres automáticos (${pct} de precisión), ${tp} ataque(s) real(es) cerrado(s) por error`,
+      guide:
+        "Validación previa (fase 1): 1 M de incidentes reales de SOC (GUIDE, Microsoft). Con N = 20 y X = 95 %, el 58,8 % del ruido se cierra sin acción con 99,6 % de precisión.",
+      suggestions: (pct: number) => `Políticas sugeridas (acuerdo ≥ ${pct} %)`,
+      minSupport: "Casos mínimos (N)",
+      noSuggestions: "Ningún patrón cumple hoy los umbrales.",
+      counts: (support: number, bp: number, fp: number, tp: number) => `${support} casos · ${bp} BP · ${fp} FP · ${tp} VP`,
+      adopt: "Adoptar como política",
+      adopted: "Ya es una política",
+      confirmAdopt: (label: string) => `Confirmá la política aprendida: ${label}`,
+      delete: "Eliminar política",
+      deleteTitle: "Eliminar la política aprendida",
+      deleteBody: (name: string) =>
+        `"${name}" deja de aplicarse. Los casos que ya decidió conservan su registro, y el patrón se puede volver a adoptar.`,
+      confirmDelete: (name: string) => `Confirmá para eliminar "${name}"`,
+      adoptedTitle: "Política creada",
+      adoptedBody: "Quedó deshabilitada, al final de la lista. Activala y probala primero en modo Simulación.",
     },
     notSaved: "Cambio no guardado",
     invalidValue: "Valor inválido",
@@ -504,6 +561,7 @@ export const S = {
     saveAllowlist: "Guardar lista",
     precision: {
       contained: "Contenidos",
+      closedAuto: "Cerrados automáticamente",
       simulated: "Simulados",
       closed: (n: number) => `cerrados ${n}`,
       precision: "precisión",

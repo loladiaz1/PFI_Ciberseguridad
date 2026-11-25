@@ -53,7 +53,7 @@ Todo lo que no sostenga este flujo es secundario para la demo.
 
 ### Fuera del MVP (trabajo futuro, para la defensa)
 - Geo-context / impossible travel
-- Módulo de IA / triaje ML
+- ~~Módulo de IA / triaje ML~~: **en el producto** desde el 25/11 (recomendador aprendido de los cierres + políticas "cerrar sin acción"; validación en `ml/RESULTADOS.md`)
 - Redis (instalado por el bootstrap, no integrado — "se activa al escalar")
 - Four-Eyes, phishing
 - ~~Aislamiento de host~~ (CU-02): **listo** — detección real (02/10) y aislamiento real desde el celular con step-up (08/10), ver `progress.md`. Falta solo un botón para revertir el aislamiento (hoy: reiniciar la víctima). Candidato a sumar a la demo
@@ -238,6 +238,7 @@ Detalle completo en `CORRECCIONES para 75%.md`; registro en `progress.md` (sesi�
 - [ ] Modelo de negocio; viabilidad económica (dos escenarios, VAN / TIR / payback); branding y logo explicados
 - [ ] Justificación tecnológica (Node/Express, Expo, SQLite+Prisma, Wazuh, Tailscale, Terraform); datasets y viabilidad técnica explicitados ("no aplica" justificado)
 - [ ] Tendencias en informática (riesgo de "Parcial": el prototipo no usa ML)
+  - 25/11: ML en el producto (recomendador de triaje y políticas aprendidas de los cierres, RF-15 / HU-11), probado local de punta a punta en el celular. Falta probar el job de la demo contra la víctima real, ensayar (`demo-ml/GUION.md`) y alinear la tesis (`docs/correcciones-tesis-ml.md`)
 
 ## 9. Diseño para escalar (cuesta casi lo mismo ahora)
 - Orquestador normaliza a `Incident` canónico (no propaga la alerta cruda).

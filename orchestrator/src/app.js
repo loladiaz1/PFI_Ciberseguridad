@@ -28,11 +28,13 @@ const { startReportPolling, ingestGatewayAlert } = require("./email");
 const {
   MODES,
   CRITICALITIES,
+  CLOSE_ACTION,
   ensureAutomationDefaults,
   getAutomationConfig,
   isValidAllowlistEntry,
   runAutomation,
 } = require("./automation");
+const { recommendationFor, loadHistory, backtest, suggest, parseThresholds, policyFromSuggestion } = require("./recommender");
 
 const app = express();
 app.use(express.json());
@@ -396,16 +398,24 @@ app.post("/api/v1/incidents/:id/reopen", requireAuth, requireRole("admin", "anal
   res.json(updated);
 });
 
-// Incluye los correos de la campana (CU-03; lista vacia en CU-01 / CU-02).
+// Incluye los correos de la campana (CU-03; lista vacia en CU-01 / CU-02),
+// la recomendacion aprendida de los cierres (src/recommender.js; null = sin
+// historial suficiente) y la accion de la politica que aplico la
+// automatizacion, si aplico alguna.
 app.get("/api/v1/incidents/:id", requireAuth, async (req, res) => {
   const incident = await prisma.incident.findUnique({
     where: { id: Number(req.params.id) },
-    include: { emails: { orderBy: { id: "asc" } } },
+    include: { emails: { orderBy: { id: "asc" } }, alerts: { orderBy: { id: "asc" }, take: 1 } },
   });
   if (!incident) {
     return res.status(404).json({ detail: "Incidente no encontrado" });
   }
-  res.json({ ...incident, emails: incident.emails.map(publicEmail) });
+  const { alerts: _firstAlert, ...rest } = incident;
+  const recommendation = await recommendationFor(incident);
+  const policy = incident.automationPolicy
+    ? await prisma.automationPolicy.findFirst({ where: { name: incident.automationPolicy }, select: { action: true } })
+    : null;
+  res.json({ ...rest, emails: incident.emails.map(publicEmail), recommendation, automationAction: policy?.action ?? null });
 });
 
 // messageIds (opcional, CU-03): ids de los correos de la campana sobre los
@@ -590,7 +600,11 @@ app.put("/api/v1/automation/settings", requireAuth, requireRole("admin"), async 
   res.json(await getAutomationConfig());
 });
 
-const CONDITION_KEYS = ["minSeverity", "minAbuseScore", "minVtMalicious", "minHashPositives", "fromCountries", "maxAssetCriticality"];
+// Las ultimas cuatro son de las politicas aprendidas (src/recommender.js).
+const CONDITION_KEYS = [
+  "minSeverity", "minAbuseScore", "minVtMalicious", "minHashPositives", "fromCountries", "maxAssetCriticality",
+  "patternKey", "decision", "minSupport", "minAgreement",
+];
 
 app.put("/api/v1/automation/policies/:id", requireAuth, requireRole("admin"), async (req, res) => {
   const { enabled, conditions } = req.body || {};
@@ -608,7 +622,14 @@ app.put("/api/v1/automation/policies/:id", requireAuth, requireRole("admin"), as
     );
     const critOk = conditions.maxAssetCriticality === undefined || CRITICALITIES.includes(conditions.maxAssetCriticality);
     const countriesOk = conditions.fromCountries === undefined || Array.isArray(conditions.fromCountries);
-    if (!numbersOk || !critOk || !countriesOk) return res.status(422).json({ detail: "Condiciones invalidas" });
+    // El patron y la decision de una politica aprendida no se editan (se
+    // adopta otro patron); N y X si, dentro de los mismos rangos de la fase 1.
+    const before = JSON.parse(policy.conditions);
+    const learnedOk =
+      conditions.patternKey === before.patternKey &&
+      conditions.decision === before.decision &&
+      (before.patternKey === undefined || !parseThresholds(conditions).error);
+    if (!numbersOk || !critOk || !countriesOk || !learnedOk) return res.status(422).json({ detail: "Condiciones invalidas" });
   }
 
   const data = {};
@@ -622,6 +643,27 @@ app.put("/api/v1/automation/policies/:id", requireAuth, requireRole("admin"), as
     changes.push(`conditions ${policy.conditions} -> ${JSON.stringify(conditions)}`);
   }
   await logAudit("automation_updated", `Política "${policy.name}": ${changes.join(", ") || "sin cambios"}`, req.user.sub);
+  res.json(await getAutomationConfig());
+});
+
+// Eliminar una politica aprendida (las crea un admin al adoptar un patron).
+// Las iniciales (config/automation.defaults.json) no se eliminan: se vuelven
+// a cargar si faltan, asi que se apagan con "enabled". La auditoria guarda
+// como estaba la politica. Los incidentes que decidio conservan su nombre y
+// motivo (trazabilidad).
+app.delete("/api/v1/automation/policies/:id", requireAuth, requireRole("admin"), async (req, res) => {
+  const policy = await prisma.automationPolicy.findUnique({ where: { id: Number(req.params.id) } });
+  if (!policy) return res.status(404).json({ detail: "Política no encontrada" });
+  if (policy.action !== CLOSE_ACTION) {
+    return res.status(422).json({ detail: "Solo se eliminan las políticas aprendidas; las iniciales se deshabilitan" });
+  }
+
+  await prisma.automationPolicy.delete({ where: { id: policy.id } });
+  await logAudit(
+    "automation_updated",
+    `Política aprendida "${policy.name}" eliminada (estaba ${policy.enabled ? "habilitada" : "deshabilitada"}; condiciones ${policy.conditions})`,
+    req.user.sub
+  );
   res.json(await getAutomationConfig());
 });
 
@@ -647,6 +689,52 @@ app.put("/api/v1/assets/:agentId", requireAuth, requireRole("admin"), async (req
   res.json(asset);
 });
 
+// ---------------------------------------------------------------------------
+// Recomendador (src/recommender.js): evaluacion con los cierres reales y
+// politicas sugeridas. Cualquier rol lo ve; solo un admin adopta una politica.
+// ?minSupport=N&minAgreement=X (por defecto los de la fase 1: 20 y 0,95).
+// ---------------------------------------------------------------------------
+
+async function adoptedPatterns() {
+  const policies = await prisma.automationPolicy.findMany({ select: { conditions: true } });
+  return new Set(policies.map((p) => JSON.parse(p.conditions).patternKey).filter(Boolean));
+}
+
+app.get("/api/v1/recommender", requireAuth, async (req, res) => {
+  const thresholds = parseThresholds(req.query);
+  if (thresholds.error) return res.status(422).json({ detail: thresholds.error });
+  const history = await loadHistory();
+  const adopted = await adoptedPatterns();
+  res.json({
+    ...thresholds,
+    evaluation: backtest(history, thresholds),
+    suggestions: suggest(history, thresholds).map((s) => ({ ...s, adopted: adopted.has(s.key) })),
+  });
+});
+
+// Adoptar un patron sugerido: crea la politica deshabilitada, al final del
+// orden (las de contencion por contexto se evaluan antes). Solo si hoy cumple
+// N y X con los umbrales pedidos.
+app.post("/api/v1/recommender/policies", requireAuth, requireRole("admin"), async (req, res) => {
+  const { patternKey, ...rest } = req.body || {};
+  const thresholds = parseThresholds(rest);
+  if (thresholds.error) return res.status(422).json({ detail: thresholds.error });
+  const suggestion = suggest(await loadHistory(), thresholds).find((s) => s.key === patternKey);
+  if (!suggestion) return res.status(422).json({ detail: "Ese patrón no cumple hoy los umbrales para cerrar sin acción" });
+  if ((await adoptedPatterns()).has(patternKey)) return res.status(409).json({ detail: "Ese patrón ya tiene una política" });
+
+  await ensureAutomationDefaults();
+  const last = await prisma.automationPolicy.findFirst({ orderBy: { order: "desc" } });
+  const policy = await prisma.automationPolicy.create({ data: policyFromSuggestion(suggestion, thresholds, (last?.order ?? 0) + 1) });
+  const pct = (x) => `${Math.round(x * 100)} %`;
+  await logAudit(
+    "automation_updated",
+    `Política aprendida "${policy.name}" (deshabilitada): ${suggestion.support - suggestion.true_positive} de ${suggestion.support} casos sin acción, acuerdo ${pct(suggestion.agreement)}; N ${thresholds.minSupport}, X ${pct(thresholds.minAgreement)}`,
+    req.user.sub
+  );
+  res.status(201).json(await getAutomationConfig());
+});
+
 app.get("/api/v1/metrics", requireAuth, async (_req, res) => {
   const incidents = await prisma.incident.findMany({
     select: {
@@ -660,6 +748,7 @@ app.get("/api/v1/metrics", requireAuth, async (_req, res) => {
       actionLatencyMs: true,
       automationDecision: true,
       closedAt: true,
+      closedBy: true,
     },
   });
   res.json(computeMetrics(incidents));

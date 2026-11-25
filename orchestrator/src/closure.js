@@ -24,6 +24,8 @@ const TAGS = {
   test_exercise: "Prueba / ejercicio",
   recurring_attacker: "Atacante recurrente",
   rule_tuning_needed: "Ajustar la regla",
+  // La pone el sistema: cierre por una politica aprendida (src/automation.js).
+  auto_closed: "Cierre automático",
 };
 
 // Texto de cada veredicto en la auditoria.

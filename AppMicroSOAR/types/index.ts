@@ -62,6 +62,52 @@ export interface Incident {
   verdict: Verdict | null;
   closingNote: string | null;
   tags: string; // JSON con claves del catalogo
+  // Solo en el detalle: recomendacion aprendida de los cierres (null = sin
+  // historial suficiente) y accion de la politica que aplico.
+  recommendation?: Recommendation | null;
+  automationAction?: PolicyAction | null;
+}
+
+// orchestrator/src/recommender.js
+export type Decision = 'requires_action' | 'no_action';
+
+export interface PatternCounts {
+  support: number;
+  true_positive: number;
+  benign_positive: number;
+  false_positive: number;
+  decision: Decision;
+  verdict: Verdict;
+  agreement: number; // 0-1: parte del historial que decidio lo mismo
+}
+
+export interface Recommendation extends PatternCounts {
+  level: 'entity' | 'pattern';
+  key: string;
+  label: string;
+}
+
+export interface Suggestion extends Recommendation {
+  useCase: UseCase;
+  adopted: boolean;
+}
+
+export interface RecommenderReport {
+  minSupport: number;
+  minAgreement: number;
+  // Evaluacion temporal con los cierres reales de Fortia.
+  evaluation: {
+    incidents: number;
+    truePositives: number;
+    recommended: number;
+    correct: number;
+    coverage: number | null;
+    accuracy: number | null;
+    noAction: { recommended: number; correct: number; precision: number | null };
+    requiresAction: { recommended: number; correct: number; precision: number | null };
+    policies: { matched: number; correct: number; tpAbsorbed: number; coverage: number | null; precision: number | null };
+  };
+  suggestions: Suggestion[];
 }
 
 export type Verdict = 'true_positive' | 'benign_positive' | 'false_positive';
@@ -123,7 +169,15 @@ export interface PolicyConditions {
   minHashPositives?: number;
   fromCountries?: string[];
   maxAssetCriticality?: Criticality;
+  // Politicas aprendidas del historial (orchestrator/src/recommender.js).
+  patternKey?: string;
+  decision?: Decision;
+  minSupport?: number;
+  minAgreement?: number;
 }
+
+// close-no-action: politica aprendida que cierra el caso como ruido conocido.
+export type PolicyAction = 'block-ip' | 'isolate-host' | 'quarantine-email' | 'close-no-action';
 
 export interface AutomationPolicy {
   id: number;
@@ -131,8 +185,8 @@ export interface AutomationPolicy {
   name: string;
   order: number;
   enabled: boolean;
-  useCase: 'CU-01' | 'CU-02';
-  action: 'block-ip' | 'isolate-host';
+  useCase: UseCase;
+  action: PolicyAction;
   conditions: PolicyConditions;
   // Precision medida con los veredictos de cierre (orchestrator: policyStats).
   stats: { executed: PolicyCounts; simulated: PolicyCounts };

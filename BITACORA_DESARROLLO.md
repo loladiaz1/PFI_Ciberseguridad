@@ -10,6 +10,62 @@
 
 ---
 
+## Entrada 13 — 2026-11-25: El modelo entra al producto (ML, fase 2)
+
+### Contexto
+
+La fase 1 del componente de aprendizaje automático (`ml/RESULTADOS.md`) validó el método sobre GUIDE,
+un millón de incidentes reales de SOCs con el veredicto de su analista, pero se quedó fuera del producto:
+un modelo entrenado con telemetría de Microsoft Defender no se puede aplicar a alertas de Wazuh. El
+prototipo seguía sin usar ML, y RF-15 ("recibir recomendaciones automáticas") seguía siendo un texto fijo
+en la pantalla del incidente.
+
+### Qué modelo servir, decidido por los datos
+
+La fase 1 dejó la respuesta: cuando hay historia, la tabla "qué decidió este SOC antes con casos de este
+patrón" rinde igual que el gradient boosting (0,927 contra 0,931 de macro-F1), porque esa tasa es casi
+toda la importancia del modelo. Y donde no hay historia, el modelo gana pero no alcanza para actuar. Por
+eso en Fortia se sirve la tabla: explicable para el analista, auditable para el administrador, sin
+dependencias nuevas, y se actualiza sola con cada cierre. Los veredictos de cierre que se agregaron el
+16/10 "como base para un modelo futuro" pasaron a ser exactamente eso.
+
+Hubo que adaptar una cosa. En GUIDE los detectores son muy específicos (8.428) y la regla alcanzaba. En
+Wazuh, la regla 5712 es cualquier fuerza bruta SSH: un job de monitoreo con la contraseña vencida y un
+atacante disparan lo mismo. Lo que los distingue es la entidad (la IP de origen), que en GUIDE estaba
+anonimizada y en Fortia es real. Por eso el recomendador tiene dos niveles, el de la entidad y el patrón
+validado, con el mismo *back-off* que la tabla de base: usa el más específico que tenga historia.
+
+### Cerrar el ruido sin perder ataques
+
+La parte de mayor impacto de la fase 1 era cerrar el ruido conocido (58,8 % de los incidentes con 99,6 %
+de precisión en GUIDE). Se implementó como una acción más de la automatización, `close-no-action`, para
+heredar todo lo que ya la hacía segura: el modo simulación, la precisión medida con los cierres de los
+analistas, el activo crítico solo manual y el cortacircuitos. Ninguna política aprendida actúa sin que un
+administrador la adopte, patrón por patrón. Se sumaron tres frenos propios del aprendizaje: la evidencia
+se vuelve a medir en cada caso (un solo ataque real en el patrón la apaga), el historial de ataque de una
+entidad le gana al patrón general, y un caso que un analista reabrió no se cierra solo, lo hubiera cerrado él o la
+automatización. Ese último caso lo encontró la prueba en el celular: el primer freno cubría solo los reabiertos
+después de un cierre automático. Para que
+el modelo no aprenda de sí mismo, lo que cerró la automatización no entra al historial.
+
+### Medir en Fortia, no solo en GUIDE
+
+La misma evaluación temporal de la fase 1 corre ahora sobre los casos reales de Fortia: cada caso se
+recomienda solo con lo que se había cerrado antes de detectarlo. La pantalla de Automatización la muestra
+junto a las cifras de GUIDE: la validación con un millón de incidentes de afuera y la medición con los
+propios.
+
+### Resultado
+
+Recomendación por incidente, políticas aprendidas (que un admin adopta y también puede eliminar, con
+auditoría) y evaluación con datos propios, con 15 tests nuevos (235 en total). El flujo completo se probó
+en el celular contra el orquestador local, con un plan de casos de prueba (`demo-ml/PRUEBA-LOCAL.md`): el
+modelo empieza equivocándose con el patrón general, aprende la entidad después de tres cierres, y la
+política cierra sola el ruido sin tocar el ataque real. Esa prueba encontró el hueco del caso reabierto por
+un analista, corregido el mismo día. Guion en `demo-ml/GUION.md`.
+
+---
+
 ## Entrada 12 — 2026-10-18: Medir, encontrar el límite y ajustar el diseño
 
 ### Contexto

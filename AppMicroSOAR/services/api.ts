@@ -10,6 +10,7 @@ import type {
   Incident,
   IncidentFilters,
   PolicyConditions,
+  RecommenderReport,
   Role,
   TimelineEntry,
   UserProfile,
@@ -144,6 +145,24 @@ export const updatePolicy = async (
   changes: { enabled?: boolean; conditions?: PolicyConditions }
 ): Promise<AutomationConfig> => {
   const { data } = await http.put<AutomationConfig>(`/api/v1/automation/policies/${id}`, changes);
+  return data;
+};
+
+// Recomendador: evaluacion con los cierres reales y politicas sugeridas para
+// N (casos) y X (acuerdo). Adoptar crea la politica deshabilitada (solo admin).
+export const getRecommender = async (minSupport: number, minAgreement: number): Promise<RecommenderReport> => {
+  const { data } = await http.get<RecommenderReport>('/api/v1/recommender', { params: { minSupport, minAgreement } });
+  return data;
+};
+
+// Solo politicas aprendidas (el backend rechaza las iniciales con 422).
+export const deletePolicy = async (id: number): Promise<AutomationConfig> => {
+  const { data } = await http.delete<AutomationConfig>(`/api/v1/automation/policies/${id}`);
+  return data;
+};
+
+export const adoptLearnedPolicy = async (patternKey: string, minSupport: number, minAgreement: number): Promise<AutomationConfig> => {
+  const { data } = await http.post<AutomationConfig>('/api/v1/recommender/policies', { patternKey, minSupport, minAgreement });
   return data;
 };
 
