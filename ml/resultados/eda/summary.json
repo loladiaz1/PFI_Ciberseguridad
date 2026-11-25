@@ -1,0 +1,12 @@
+{
+  "overlap_incidents": 0,
+  "orgs_train": 5340,
+  "orgs_test": 4400,
+  "orgs_both": 4021,
+  "orgs_test_after": 296,
+  "orgs_single_class": 3047,
+  "train_from": "2023-11-20",
+  "train_to": "2024-06-17",
+  "test_from": "2023-11-22",
+  "test_to": "2024-06-17"
+}
