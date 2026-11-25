@@ -46,6 +46,8 @@ const SUITES = {
   "phishing.test.js": ["Phishing reportado: ingesta, cuarentena y restauración", "CU-03", "Un reporte sin el correo original se procesa igual, el mismo correo abre varios incidentes, o la cuarentena informa éxito sin haber movido el correo de ningún buzón."],
   "campaign.test.js": ["Búsqueda de correos similares de la campaña", "CU-03", "Correos legítimos tratados como parte de la campaña (por un asunto parecido o un dominio común), candidatos que entran en la cuarentena sin que el analista los elija, o variantes de la misma campaña repartidas en varios incidentes."],
   "mailProvider.test.js": ["Integración con el servidor de correo (IMAP)", "CU-03", "Una campaña de miles de correos que abre miles de conexiones, reportes procesados dos veces, una sesión que queda abierta tras un error, o un aviso de reporte nuevo que se pierde si la conexión se cae."],
+  "mailRule.test.js": ["Detección por regla de correo (Wazuh)", "CU-03", "Un mismo correo detectado por la regla y por un reporte abre dos incidentes, se toca un buzón no monitoreado, o una falla del servidor de correo tira el proceso."],
+  "recommender.test.js": ["Recomendador y políticas aprendidas (ML, fase 2)", "RF-15 / Triaje", "Una recomendación que usa cierres posteriores a la detección, una política aprendida que cierra sola un ataque o sigue activa cuando un analista marca uno, o una política adoptada sin ser admin o sin auditoría."],
 };
 
 const suites = results.testResults
