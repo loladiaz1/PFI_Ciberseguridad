@@ -1,7 +1,7 @@
 # Componente de aprendizaje automático — Fase 1 (validación sobre GUIDE)
 
 Reporte de la fase 1 del recomendador de Fortia (Micro-SOAR): qué se hizo, con qué datos, qué cifras dio, qué
-significan y qué no. Todas las cifras salen de `python -m fortia_ml.train` (salidas en `ml/out/`, no versionadas) y
+significan y qué no. Todas las cifras salen de `python -m fortia_ml.train` (salidas en `ml/out/`, no versionadas; las de la corrida de referencia, con EDA y robustez, en `ml/resultados/`) y
 son reproducibles con la semilla fija (ver *Reproducibilidad*).
 
 ## 1. Objetivo
@@ -143,7 +143,7 @@ Por clase (precisión / recall / F1):
 | benign_positive | 0,929 / 0,962 / 0,945 | 0,930 / 0,963 / 0,947 |
 | false_positive | 0,924 / 0,902 / 0,913 | 0,933 / 0,902 / 0,917 |
 
-Matriz de confusión del modelo: `out/confusion_matrix.png`. El 86,6 % de los TP se clasifica bien. El 8,2 % se
+Matriz de confusión del modelo: `resultados/confusion_matrix.png`. El 86,6 % de los TP se clasifica bien. El 8,2 % se
 confunde con BP y el 5,1 % con FP. Esa confusión es la que más importa, porque es un ataque que se trataría como
 ruido.
 
@@ -164,14 +164,14 @@ siempre se cierra igual" alcanza.
 Caída del macro-F1 al permutar cada feature: la tasa de veredicto de la regla **dentro de la organización** domina
 (BP 0,182; TP 0,166; FP 0,088). Le siguen, muy lejos, la presencia de sesiones de inicio de sesión en la nube
 (0,005), la tasa global de la regla (≈ 0,002 por clase) y la cantidad de evidencias (0,001). Detalle completo en
-`out/feature_importance.csv`.
+`resultados/feature_importance.csv`.
 
 **Lectura honesta: el modelo le gana a la tabla por muy poco** (+0,004 de macro-F1 en la temporal). Casi toda la
 señal está en "qué hizo este SOC con esta regla antes". La sección siguiente muestra dónde aporta.
 
 ## 6. Segmentos: dónde aporta el modelo
 
-Macro-F1 de la evaluación temporal (`out/segments.csv` tiene también precisión y recall por clase).
+Macro-F1 de la evaluación temporal (`resultados/segments.csv` tiene también precisión y recall por clase).
 
 **Por historia de la regla:**
 
@@ -199,8 +199,8 @@ Macro-F1 de la evaluación temporal (`out/segments.csv` tiene también precisió
 
 ## 7. Políticas sugeridas
 
-Precisión binaria: BP + FP = "no requiere acción". Las cifras completas de la grilla están en `out/policy_grid.csv`.
-La figura `out/policy_tradeoff.png` muestra la cobertura de "cerrar sin acción" contra los TP absorbidos.
+Precisión binaria: BP + FP = "no requiere acción". Las cifras completas de la grilla están en `resultados/policy_grid.csv`.
+La figura `resultados/policy_tradeoff.png` muestra la cobertura de "cerrar sin acción" contra los TP absorbidos.
 
 ### 7.1 Evaluación temporal, N = 20 y X = 95 % (valores por defecto)
 
@@ -351,7 +351,7 @@ resultados, y excluirla no le cuesta nada al modelo.
   **Verificado:** dos corridas completas independientes dieron macro-F1, segmentos, grilla de políticas e importancia
   de features idénticos.
 - Entorno: Python 3.14.7, pandas 3.0.6, NumPy 2.5.4, scikit-learn 1.9.1, matplotlib 3.11.2 (versiones fijadas en
-  `ml/requirements.txt`). Se registran también en `out/metrics.json`.
+  `ml/requirements.txt`). Se registran también en `resultados/metrics.json`.
 - Hardware: laptop con Intel Core i5-1135G7 (4 núcleos / 8 hilos, 2,4 GHz), 7,7 GB de RAM y Windows 11 Home. Sin GPU.
 - Tiempos de la evaluación temporal (704.460 incidentes de entrenamiento, 305.868 de evaluación):
   - Entrenamiento del modelo: 24,7 s.
