@@ -16,12 +16,15 @@ import { S } from "@/constants/strings";
 // (obligatoria para benigno y falso positivo). "Falso positivo" pide step-up:
 // descartar una alerta que era un ataque es el error mas caro en un SOC.
 export default function CloseIncidentScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  // verdict / note: sugeridos por la recomendacion del modelo (incident.tsx);
+  // el analista los confirma o los cambia.
+  const params = useLocalSearchParams<{ id: string; verdict?: Verdict; note?: string }>();
+  const { id } = params;
   const [incident, setIncident] = useState<Incident | null>(null);
   const [catalog, setCatalog] = useState<ClosureCatalog | null>(null);
-  const [verdict, setVerdict] = useState<Verdict | null>(null);
+  const [verdict, setVerdict] = useState<Verdict | null>(params.verdict ?? null);
   const [tags, setTags] = useState<string[]>([]);
-  const [note, setNote] = useState("");
+  const [note, setNote] = useState(params.note ?? "");
   const [saving, setSaving] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
 

@@ -282,9 +282,13 @@ export default function IncidentDetail() {
                         <View style={styles.statusRow}>
                             <MaterialIcons name="smart-toy" size={20} color={Colors.text} />
                             <Text style={styles.automationTitle}>
-                                {incident.automationDecision === "executed" ? S.incident.autoContained
+                                {/* automationAction null = la politica se elimino, y solo se
+                                    eliminan las de cierre. La simulacion de una politica
+                                    eliminada queda generica. */}
+                                {incident.automationDecision === "executed"
+                                    ? (incident.automationAction ?? "close-no-action") === "close-no-action" ? S.incident.autoClosed : S.incident.autoContained
                                     : incident.automationDecision === "failed" ? S.incident.autoFailed
-                                    : S.incident.simulation(action === "block-ip")}
+                                    : S.incident.simulation(incident.automationPolicy ? incident.automationAction : action)}
                             </Text>
                         </View>
                         {incident.automationPolicy ? (
@@ -361,6 +365,9 @@ export default function IncidentDetail() {
                         ) : null}
                     </View>
                 ) : null}
+
+                {/* Recomendacion aprendida de los cierres (orchestrator/src/recommender.js) */}
+                {incident.closedAt ? null : <ModelRecommendation incident={incident} canAct={canAct} />}
 
                 {incident.closedAt ? null : mitigatedAt ? (
                     <View style={styles.recommendation}>
@@ -491,7 +498,72 @@ export default function IncidentDetail() {
 
 }
 
+// Que decidieron los analistas con los casos parecidos y, si fue "sin
+// accion", el atajo para cerrar con ese veredicto (el analista confirma).
+function ModelRecommendation({ incident, canAct }: { incident: Incident; canAct: boolean }) {
+    const rec = incident.recommendation;
+    if (!rec) {
+        return (
+            <View style={styles.model}>
+                <Text style={styles.modelTitle}>{S.incident.model.title}</Text>
+                <Text style={styles.recText}>{S.incident.model.none}</Text>
+            </View>
+        );
+    }
+    const noAction = rec.decision === "no_action";
+    const agreeing = noAction ? rec.support - rec.true_positive : rec.true_positive;
+    const color = noAction ? VERDICTS[rec.verdict].color : Colors.danger;
+    return (
+        <View style={[styles.model, { borderColor: color }]}>
+            <Text style={styles.modelTitle}>{S.incident.model.title}</Text>
+            <Text style={[styles.verdict, { color }]}>
+                {noAction ? S.incident.model.noAction : S.incident.model.requiresAction} · {VERDICTS[rec.verdict].label}
+            </Text>
+            <Text selectable style={styles.recText}>
+                {S.incident.model.evidence(agreeing, rec.support, Math.round(rec.agreement * 100), noAction)}
+            </Text>
+            <Text selectable style={styles.timelineSub}>{S.incident.model.basis(rec.label, rec.level === "entity")}</Text>
+            {rec.agreement < 0.8 ? <Text style={styles.modelWarning}>{S.incident.model.mixed}</Text> : null}
+            {noAction && canAct ? (
+                <TouchableOpacity
+                    style={styles.secondaryButton}
+                    onPress={() =>
+                        router.push({
+                            pathname: "/close",
+                            params: { id: String(incident.id), verdict: rec.verdict, note: S.incident.model.note(agreeing, rec.support, rec.label) },
+                        })
+                    }
+                >
+                    <Text style={styles.secondaryButtonText}>{S.incident.model.apply(VERDICTS[rec.verdict].label.toLowerCase())}</Text>
+                </TouchableOpacity>
+            ) : null}
+        </View>
+    );
+}
+
 const styles = StyleSheet.create({
+
+    model: {
+        backgroundColor: Colors.card,
+        padding: 16,
+        borderRadius: 16,
+        marginTop: 25,
+        borderWidth: 1,
+        borderColor: Colors.border,
+    },
+
+    modelTitle: {
+        fontWeight: "bold",
+        fontSize: 18,
+        marginBottom: 8,
+        color: Colors.primary,
+    },
+
+    modelWarning: {
+        color: Colors.warning,
+        marginTop: 8,
+        fontWeight: "600",
+    },
 
     container: {
         flex: 1,

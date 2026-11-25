@@ -373,3 +373,46 @@ py -3.14 -m venv .venv
 .venv\Scripts\python -m fortia_ml.train --data <carpeta> --with-last-verdict
 .venv\Scripts\python -m fortia_ml.figures
 ```
+
+## 12. Fase 2: lo implementado en Fortia
+
+La propuesta de §10 (ítems 1, 2 y 3) quedó implementada en el orquestador y la app, con la opción de
+servicio "reglas JSON" de §10.4: sin dependencias nuevas, sin proceso extra y reutilizando el motor de
+`automation.js` y sus controles. Código: `orchestrator/src/recommender.js`; tests:
+`orchestrator/tests/recommender.test.js`; guion de la demo: `demo-ml/GUION.md`.
+
+- **Recomendación por incidente (RF-15 / HU-11).** Con los casos cerrados por analistas, el detalle del
+  incidente muestra la decisión (requiere acción / cerrar sin acción), el veredicto sugerido, la
+  evidencia ("5 de 5 casos parecidos") y en qué se basa. Dos niveles con *back-off*, igual que la tabla
+  de §4: **entidad** (regla + IP de origen, archivo o dominio del remitente: en GUIDE estaban
+  anonimizados, en Fortia son reales) y **patrón** (regla + evidencia + tamaño, el de §3). Se usa el
+  primer nivel con al menos 3 casos; un empate cuenta como "requiere acción". Si es "sin acción", la app
+  ofrece cerrar con ese veredicto y una nota prellenada: decide el analista.
+- **Políticas aprendidas.** Los patrones con ≥ N casos y ≥ X % cerrados sin acción se sugieren al admin
+  (N elegible: 5, 10 o 20; X = 95 %). Adoptar uno crea una política con la acción nueva
+  `close-no-action`, deshabilitada y al final del orden (las de contención por contexto van primero). Al
+  ejecutarse cierra el caso con el veredicto más frecuente del patrón y la evidencia en la nota. Valen
+  todos los controles existentes (modo simulación, activo crítico = solo manual, criticidad máxima,
+  cortacircuitos, que ahora cuenta también los cierres) y tres nuevos: N y X se vuelven a medir en cada
+  caso (si un analista cierra uno del patrón como ataque, la política deja de aplicar sola); si el
+  historial propio de la entidad dice "ataque", el patrón general no la cierra; y un caso que un analista
+  reabrió (lo hubiera cerrado él o la automatización) no se vuelve a cerrar solo, aunque sí se puede contener.
+- **Circularidad (§9.8).** No entran al historial los casos que cerró la automatización
+  (`closedBy = "automation"`). Es más fino que excluir `automationDecision = "executed"`: un caso
+  contenido solo y cerrado después por un analista sí tiene etiqueta humana, y un cierre automático que un
+  analista reabre y vuelve a cerrar es justamente el error que hay que aprender.
+- **Evaluación con los datos de Fortia.** `GET /api/v1/recommender` repite la evaluación temporal de §5.1
+  sobre los casos reales: cada caso se recomienda solo con lo cerrado antes de su detección. Informa
+  cobertura y acierto de la recomendación, y cobertura, precisión y ataques absorbidos de las políticas
+  sugeridas. La app lo muestra en Automatización, junto a las cifras de GUIDE.
+- **Eliminar.** Un admin puede eliminar una política aprendida (queda auditado con su estado y sus
+  condiciones; los casos que decidió conservan su registro y el patrón vuelve a quedar disponible). Las
+  iniciales no se eliminan: se deshabilitan.
+- **Precisión por política.** Para una política de cierre, la precisión es la parte de sus casos que
+  *no* era un ataque real, medida solo con cierres de analistas (los de la propia automatización no
+  miden nada). El tiempo hasta el cierre (`timeToClose`) no cuenta los cierres automáticos.
+
+Qué no se hizo (sigue en §10): el gradient boosting no se sirve (en Fortia todavía no hay volumen para la
+sugerencia "sin historia"); el muestreo de auditoría de los cierres automáticos; y las políticas
+aprendidas de contención (las de contención siguen siendo las de contexto: reputación, VirusTotal,
+criticidad).

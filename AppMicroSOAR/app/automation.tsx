@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -16,12 +16,24 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { isAxiosError } from "axios";
 
 import { BrandHeader } from "@/components/ui/BrandHeader";
-import { getAutomation, updateAsset, updateAutomationSettings, updatePolicy } from "@/services/api";
+import { adoptLearnedPolicy, deletePolicy, getAutomation, getRecommender, updateAsset, updateAutomationSettings, updatePolicy } from "@/services/api";
 import { getStoredUser } from "@/services/auth";
 import { confirmWithBiometrics } from "@/services/stepUp";
 import Colors from "@/styles/colors";
-import type { AutomationConfig, AutomationMode, AutomationPolicy, Criticality, PolicyConditions } from "@/types";
+import type { AutomationConfig, AutomationMode, AutomationPolicy, Criticality, PolicyAction, PolicyConditions, RecommenderReport } from "@/types";
 import { S } from "@/constants/strings";
+
+const ACTION_LABELS: Record<PolicyAction, string> = {
+  "block-ip": S.automation.blockIp,
+  "isolate-host": S.automation.isolateHost,
+  "quarantine-email": S.automation.quarantine,
+  "close-no-action": S.automation.closeNoAction,
+};
+// Politicas sugeridas: N a elegir (los valores de la grilla de la fase 1) y X
+// fijo en el valor por defecto de la fase 1.
+const MIN_SUPPORTS = [5, 10, 20];
+const MIN_AGREEMENT = 0.95;
+const pct = (x: number | null) => (x === null ? "-" : `${Math.round(x * 100)} %`);
 
 // Automatizacion de la respuesta segun contexto. Cualquier rol la ve; solo
 // un admin la cambia, con step-up biometrico (el backend vuelve a validar el
@@ -35,6 +47,8 @@ const NUMERIC: { key: keyof PolicyConditions; label: string }[] = [
   { key: "minAbuseScore", label: S.automation.conditions.minAbuseScore },
   { key: "minVtMalicious", label: S.automation.conditions.minVtMalicious },
   { key: "minHashPositives", label: S.automation.conditions.minHashPositives },
+  { key: "minSupport", label: S.automation.conditions.minSupport },
+  { key: "minAgreement", label: S.automation.conditions.minAgreement },
 ];
 
 function describe(conditions: PolicyConditions): string[] {
@@ -59,8 +73,23 @@ export default function AutomationScreen() {
   // Cortacircuitos (texto editable; se valida al guardar).
   const [maxActions, setMaxActions] = useState("");
   const [windowMinutes, setWindowMinutes] = useState("");
+  // Recomendador: si falla, el resto de la pantalla se usa igual.
+  const [minSupport, setMinSupport] = useState(MIN_SUPPORTS[0]);
+  const minSupportRef = useRef(MIN_SUPPORTS[0]);
+  const [report, setReport] = useState<RecommenderReport | null>(null);
+  const [reportError, setReportError] = useState(false);
+
+  const loadReport = useCallback((n: number) => {
+    getRecommender(n, MIN_AGREEMENT)
+      .then((r) => {
+        setReport(r);
+        setReportError(false);
+      })
+      .catch(() => setReportError(true));
+  }, []);
 
   const load = useCallback(() => {
+    loadReport(minSupportRef.current);
     return Promise.all([getAutomation(), getStoredUser()])
       .then(([cfg, me]) => {
         setConfig(cfg);
@@ -71,7 +100,7 @@ export default function AutomationScreen() {
         setError("");
       })
       .catch(() => setError(S.automation.loadError));
-  }, []);
+  }, [loadReport]);
 
   useFocusEffect(
     useCallback(() => {
@@ -139,6 +168,28 @@ export default function AutomationScreen() {
       return;
     }
     run(S.automation.confirmBreaker, () => updateAutomationSettings({ maxActions: max, windowMinutes: minutes }));
+  };
+
+  const chooseMinSupport = (n: number) => {
+    minSupportRef.current = n;
+    setMinSupport(n);
+    loadReport(n);
+  };
+
+  const adopt = async (patternKey: string, label: string) => {
+    const created = await run(S.automation.learning.confirmAdopt(label), () => adoptLearnedPolicy(patternKey, minSupport, MIN_AGREEMENT));
+    if (created) Alert.alert(S.automation.learning.adoptedTitle, S.automation.learning.adoptedBody);
+  };
+
+  const removePolicy = (policy: AutomationPolicy) => {
+    Alert.alert(S.automation.learning.deleteTitle, S.automation.learning.deleteBody(policy.name), [
+      { text: S.common.cancel, style: "cancel" },
+      {
+        text: S.automation.learning.delete,
+        style: "destructive",
+        onPress: () => run(S.automation.learning.confirmDelete(policy.name), () => deletePolicy(policy.id)),
+      },
+    ]);
   };
 
   const saveAllowlist = () => {
@@ -241,7 +292,7 @@ export default function AutomationScreen() {
               <View style={styles.flex}>
                 <Text style={styles.policyName}>{policy.name}</Text>
                 <Text style={styles.meta}>
-                  {policy.useCase} · {policy.action === "block-ip" ? S.automation.blockIp : S.automation.isolateHost}
+                  {policy.useCase} · {ACTION_LABELS[policy.action] ?? policy.action}
                 </Text>
               </View>
               <Switch
@@ -305,10 +356,75 @@ export default function AutomationScreen() {
                     <Text style={styles.linkText}>{S.automation.editThresholds}</Text>
                   </TouchableOpacity>
                 ) : null}
+                {/* Solo las aprendidas: las iniciales se apagan con el switch. */}
+                {isAdmin && policy.action === "close-no-action" ? (
+                  <TouchableOpacity style={styles.link} onPress={() => removePolicy(policy)}>
+                    <Text style={styles.deleteText}>{S.automation.learning.delete}</Text>
+                  </TouchableOpacity>
+                ) : null}
               </>
             )}
           </View>
         ))}
+
+        {/* APRENDIZAJE (orchestrator/src/recommender.js) */}
+        <Text style={styles.section}>{S.automation.learning.title}</Text>
+        <View style={styles.card}>
+          <Text style={styles.help}>{S.automation.learning.help}</Text>
+          {reportError ? <Text style={styles.error}>{S.automation.learning.loadError}</Text> : null}
+          {report ? (
+            <>
+              <Text style={[styles.policyName, styles.spaced]}>{S.automation.learning.evaluation}</Text>
+              <Text style={styles.help}>{S.automation.learning.evaluationHelp}</Text>
+              <Text style={styles.condition}>• {S.automation.learning.evaluated(report.evaluation.incidents)}</Text>
+              <Text style={styles.condition}>
+                • {S.automation.learning.recommended(report.evaluation.recommended, pct(report.evaluation.coverage))}
+              </Text>
+              <Text style={styles.condition}>
+                • {S.automation.learning.accuracy(report.evaluation.correct, pct(report.evaluation.accuracy))}
+              </Text>
+              <Text style={styles.condition}>
+                • {S.automation.learning.policies(report.evaluation.policies.matched, pct(report.evaluation.policies.precision), report.evaluation.policies.tpAbsorbed)}
+              </Text>
+              <Text style={styles.meta}>{S.automation.learning.guide}</Text>
+
+              <Text style={[styles.policyName, styles.spaced]}>{S.automation.learning.suggestions(Math.round(MIN_AGREEMENT * 100))}</Text>
+              <Text style={styles.inputLabel}>{S.automation.learning.minSupport}</Text>
+              <View style={styles.chips}>
+                {MIN_SUPPORTS.map((n) => (
+                  <TouchableOpacity
+                    key={n}
+                    style={[styles.chip, minSupport === n && styles.chipActive]}
+                    disabled={minSupport === n}
+                    onPress={() => chooseMinSupport(n)}
+                  >
+                    <Text style={[styles.chipText, minSupport === n && styles.chipTextActive]}>{n}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              {report.suggestions.length === 0 ? <Text style={styles.help}>{S.automation.learning.noSuggestions}</Text> : null}
+              {report.suggestions.map((s) => (
+                <View key={s.key} style={styles.asset}>
+                  <Text style={styles.policyName}>
+                    {s.label} → {S.automation.closeNoAction}
+                  </Text>
+                  <Text style={styles.meta}>
+                    {s.useCase} · {S.automation.learning.counts(s.support, s.benign_positive, s.false_positive, s.true_positive)} · {pct(s.agreement)}
+                  </Text>
+                  {s.adopted ? (
+                    <Text style={styles.meta}>{S.automation.learning.adopted}</Text>
+                  ) : isAdmin ? (
+                    <TouchableOpacity style={styles.link} onPress={() => adopt(s.key, s.label)}>
+                      <Text style={styles.linkText}>{S.automation.learning.adopt}</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+              ))}
+            </>
+          ) : reportError ? null : (
+            <ActivityIndicator color={Colors.primary} />
+          )}
+        </View>
 
         {/* ACTIVOS */}
         <Text style={styles.section}>{S.automation.assets}</Text>
@@ -384,6 +500,7 @@ const styles = StyleSheet.create({
   condition: { color: Colors.text, marginTop: 4 },
   link: { marginTop: 10 },
   linkText: { color: Colors.primary, fontWeight: "600" },
+  deleteText: { color: Colors.danger, fontWeight: "600" },
   inputRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 8, gap: 10 },
   inputLabel: { color: Colors.textSecondary, flex: 1, marginTop: 8 },
   input: { borderWidth: 1, borderColor: Colors.border, borderRadius: 10, color: Colors.text, paddingHorizontal: 12, paddingVertical: 8, minWidth: 80 },
@@ -424,7 +541,7 @@ function PolicyPrecision({ policy }: { policy: AutomationPolicy }) {
   }
   return (
     <View style={styles.precision}>
-      {line(S.automation.precision.contained, executed)}
+      {line(policy.action === "close-no-action" ? S.automation.precision.closedAuto : S.automation.precision.contained, executed)}
       {line(S.automation.precision.simulated, simulated)}
     </View>
   );

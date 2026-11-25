@@ -20,13 +20,23 @@ const { prisma } = require("./db");
 const { logAudit } = require("./audit");
 const { mitigate } = require("./mitigation");
 const { useCaseOf } = require("./normalize");
+const { VERDICT_LABELS, mergeTags, tagsOf } = require("./closure");
+const { learnedContext, patternFailures, summarize } = require("./recommender");
 
 const DEFAULTS_PATH = path.join(__dirname, "..", "config", "automation.defaults.json");
 const MODES = ["off", "simulate", "active"];
 const CRITICALITIES = ["low", "medium", "high", "critical"];
 const ACTOR = "automation";
+// Politicas aprendidas del historial (src/recommender.js): cierran el caso
+// como ruido conocido en vez de contener.
+const CLOSE_ACTION = "close-no-action";
 // Texto de cada accion en la auditoria y en los motivos.
-const ACTION_LABELS = { "block-ip": "bloqueo de IP", "isolate-host": "aislamiento del host", "quarantine-email": "cuarentena del correo" };
+const ACTION_LABELS = {
+  "block-ip": "bloqueo de IP",
+  "isolate-host": "aislamiento del host",
+  "quarantine-email": "cuarentena del correo",
+  [CLOSE_ACTION]: "cierre sin acción",
+};
 
 function loadDefaults() {
   return JSON.parse(fs.readFileSync(DEFAULTS_PATH, "utf8"));
@@ -68,7 +78,7 @@ async function getAutomationConfig(db = prisma) {
   const settings = await db.automationSettings.findUnique({ where: { id: 1 } });
   const policies = await db.automationPolicy.findMany({ orderBy: { order: "asc" } });
   const assets = await db.asset.findMany({ orderBy: { agentId: "asc" } });
-  const stats = await policyStats(db);
+  const stats = await policyStats(db, new Set(policies.filter((p) => p.action === CLOSE_ACTION).map((p) => p.name)));
   return {
     settings: { ...settings, allowlist: JSON.parse(settings.allowlist) },
     policies: policies.map((p) => ({ ...p, conditions: JSON.parse(p.conditions), stats: stats[p.name] ?? emptyStats() })),
@@ -80,7 +90,10 @@ async function getAutomationConfig(db = prisma) {
 // analistas: de los casos que contuvo (o habria contenido, en simulacion),
 // cuantos resultaron ataques reales. precision = verdaderos positivos /
 // casos cerrados. Es la evidencia para decidir activar, ajustar o apagar
-// una politica.
+// una politica. En una politica de cierre (closePolicies, por nombre) la
+// precision es la inversa: cuantos NO eran ataques reales. Solo cuentan los
+// cierres de un analista: el veredicto que pone la propia automatizacion no
+// mide nada (si un analista reabre el caso y lo cierra, ahi si cuenta).
 function emptyCounts() {
   return { total: 0, closed: 0, true_positive: 0, benign_positive: 0, false_positive: 0, precision: null };
 }
@@ -89,22 +102,25 @@ function emptyStats() {
   return { executed: emptyCounts(), simulated: emptyCounts() };
 }
 
-async function policyStats(db = prisma) {
+async function policyStats(db = prisma, closePolicies = new Set()) {
   const incidents = await db.incident.findMany({
     where: { automationPolicy: { not: null }, automationDecision: { in: ["executed", "simulated"] } },
-    select: { automationPolicy: true, automationDecision: true, verdict: true, closedAt: true },
+    select: { automationPolicy: true, automationDecision: true, verdict: true, closedAt: true, closedBy: true },
   });
   const stats = {};
   for (const i of incidents) {
     const counts = (stats[i.automationPolicy] ??= emptyStats())[i.automationDecision];
     counts.total += 1;
-    if (i.closedAt && i.verdict) {
+    if (i.closedAt && i.verdict && i.closedBy !== ACTOR) {
       counts.closed += 1;
       counts[i.verdict] += 1;
     }
   }
-  for (const s of Object.values(stats)) {
-    for (const c of [s.executed, s.simulated]) c.precision = c.closed ? c.true_positive / c.closed : null;
+  for (const [name, s] of Object.entries(stats)) {
+    for (const c of [s.executed, s.simulated]) {
+      const hits = closePolicies.has(name) ? c.closed - c.true_positive : c.true_positive;
+      c.precision = c.closed ? hits / c.closed : null;
+    }
   }
   return stats;
 }
@@ -149,7 +165,9 @@ function ipMatches(ip, entry) {
 const rank = (criticality) => CRITICALITIES.indexOf(criticality);
 
 // Contexto que usan las condiciones, a partir del incidente persistido.
-function contextOf(incident, asset, defaultCriticality) {
+// learned: claves del caso e historial de cierres (src/recommender.js), solo
+// si hay politicas aprendidas habilitadas.
+function contextOf(incident, asset, defaultCriticality, learned = null) {
   const abuse = incident.enrichmentAbuseIpdb ? JSON.parse(incident.enrichmentAbuseIpdb) : null;
   const vt = incident.enrichmentVt ? JSON.parse(incident.enrichmentVt) : null;
   return {
@@ -160,6 +178,7 @@ function contextOf(incident, asset, defaultCriticality) {
     vtMalicious: vt?.malicious ?? null,
     hashPositives: incident.hashPositives ?? null,
     criticality: asset?.criticality ?? defaultCriticality,
+    learned,
   };
 }
 
@@ -182,20 +201,26 @@ function failedConditions(conditions, ctx) {
   if (conditions.maxAssetCriticality && rank(ctx.criticality) > rank(conditions.maxAssetCriticality)) {
     failed.push(`activo ${ctx.criticality} > ${conditions.maxAssetCriticality}`);
   }
+  // Politica aprendida: el patron tiene que seguir cumpliendo N y X hoy.
+  if (conditions.patternKey !== undefined) {
+    failed.push(...(ctx.learned ? patternFailures(conditions, ctx.learned) : ["sin historial de cierres"]));
+  }
   return failed;
 }
 
 // Decision pura (sin efectos): { decision, policy, reason }.
 // decision: "none" | "simulate" | "execute"
-function evaluate({ incident, settings, policies, asset }) {
+function evaluate({ incident, settings, policies, asset, learned = null }) {
   if (settings.mode === "off") return { decision: "none", policy: null, reason: "Automatización apagada" };
 
-  const ctx = contextOf(incident, asset, settings.defaultCriticality);
+  const ctx = contextOf(incident, asset, settings.defaultCriticality, learned);
   if (ctx.criticality === "critical") {
     return { decision: "none", policy: null, reason: "Activo crítico: solo respuesta manual" };
   }
 
-  const candidates = policies.filter((p) => p.enabled && p.useCase === ctx.useCase);
+  // Una politica aprendida solo es candidata para los casos de su patron.
+  const ofThisCase = (p) => p.conditions.patternKey === undefined || (learned?.keys ?? []).some((k) => k.key === p.conditions.patternKey);
+  const candidates = policies.filter((p) => p.enabled && p.useCase === ctx.useCase && ofThisCase(p));
   for (const policy of candidates) {
     if (failedConditions(policy.conditions, ctx).length > 0) continue;
     if (policy.action === "block-ip" && settings.allowlist.some((entry) => ipMatches(incident.srcIp, entry))) {
@@ -212,17 +237,52 @@ function evaluate({ incident, settings, policies, asset }) {
   return { decision: "none", policy: null, reason: tried.length ? `Ninguna política coincide (${tried.join(" | ")})` : "No hay políticas activas para este caso de uso" };
 }
 
+// Cierre automatico por una politica aprendida: el veredicto que mas se
+// repite en el historial del patron (benigno o falso positivo), con la
+// evidencia en la nota. Queda abierto a que un analista lo reabra.
+async function closeAsKnownNoise(incident, result, record, learned) {
+  const s = summarize(learned.index.get(result.policy.conditions.patternKey));
+  await prisma.incident.update({
+    where: { id: incident.id },
+    data: {
+      closedAt: new Date(),
+      closedBy: ACTOR,
+      verdict: s.verdict,
+      closingNote: `Cierre automático: ${s.support - s.true_positive} de ${s.support} casos de este patrón se cerraron sin acción (política "${result.policy.name}").`,
+      tags: mergeTags(tagsOf(incident), ["auto_closed"]),
+      automationDecision: "executed",
+      ...record,
+    },
+  });
+  await logAudit(
+    "incident_closed",
+    `Cierre automático del incidente #${incident.id} como ${VERDICT_LABELS[s.verdict]} (política "${result.policy.name}")`,
+    ACTOR,
+    incident.id
+  );
+}
+
 // Evalua un incidente recien creado (o recien enriquecido) y actua segun el
 // modo. Nunca tira: un error en la automatizacion no debe afectar la ingesta.
 async function runAutomation(incidentId) {
   try {
     const incident = await prisma.incident.findUnique({ where: { id: incidentId } });
-    // Si un analista ya actuo mientras tanto, no hay nada que decidir.
-    if (!incident || incident.status !== "new" || incident.closedAt) return null;
+    // Si un analista ya actuo mientras tanto, no hay nada que decidir. Un caso
+    // con la automatizacion ya ejecutada y abierto es uno que un analista
+    // reabrio despues de un cierre automatico: no se vuelve a cerrar solo.
+    if (!incident || incident.status !== "new" || incident.closedAt || incident.automationDecision === "executed") return null;
 
     const { settings, policies } = await getAutomationConfig();
     const asset = await prisma.asset.findUnique({ where: { agentId: incident.agentId } });
-    const result = evaluate({ incident, settings, policies, asset });
+    const learned = policies.some((p) => p.enabled && p.conditions.patternKey !== undefined) ? await learnedContext(incident) : null;
+    let result = evaluate({ incident, settings, policies, asset, learned });
+    // Un caso que un analista reabrio (despues de cerrarlo el o la
+    // automatizacion) esta en investigacion: ninguna politica aprendida lo
+    // cierra. Contenerlo si puede. Las de cierre van al final del orden, asi
+    // que si gano una, no coincidia ninguna de contencion.
+    if (result.policy?.action === CLOSE_ACTION && (await prisma.auditEvent.count({ where: { incidentId: incident.id, type: "incident_reopened" } }))) {
+      result = { decision: "none", policy: null, reason: "Caso reabierto por un analista: las políticas aprendidas no lo cierran" };
+    }
     const record = { automationPolicy: result.policy?.name ?? null, automationReason: result.reason };
 
     if (result.decision === "none") {
@@ -251,8 +311,10 @@ async function runAutomation(incidentId) {
     // Una politica mal configurada o una ola de ataques no puede bloquear
     // cientos de IPs o aislar media red sin que una persona lo vea.
     const since = new Date(Date.now() - settings.windowMinutes * 60 * 1000);
+    // Los cierres automaticos tambien cuentan: cerrar cientos de casos sin
+    // que nadie los vea es tan riesgoso como contener de mas.
     const recent = await prisma.auditEvent.count({
-      where: { actor: ACTOR, type: { in: ["ip_blocked", "host_isolated", "email_quarantined"] }, createdAt: { gte: since } },
+      where: { actor: ACTOR, type: { in: ["ip_blocked", "host_isolated", "email_quarantined", "incident_closed"] }, createdAt: { gte: since } },
     });
     if (recent >= settings.maxActions) {
       await prisma.automationSettings.update({ where: { id: 1 }, data: { mode: "simulate", updatedBy: ACTOR } });
@@ -263,6 +325,11 @@ async function runAutomation(incidentId) {
       });
       await logAudit("automation_paused", `Incidente #${incident.id}: ${why}`, ACTOR, incident.id);
       return { ...result, decision: "simulate", paused: true };
+    }
+
+    if (result.policy.action === CLOSE_ACTION) {
+      await closeAsKnownNoise(incident, result, record, learned);
+      return result;
     }
 
     try {
@@ -289,6 +356,7 @@ module.exports = {
   MODES,
   CRITICALITIES,
   ACTOR,
+  CLOSE_ACTION,
   ensureAutomationDefaults,
   getAutomationConfig,
   policyStats,

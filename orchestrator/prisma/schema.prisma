@@ -120,8 +120,10 @@ model AutomationPolicy {
   name       String
   order      Int
   enabled    Boolean  @default(false)
-  useCase    String // CU-01 | CU-02
-  action     String // block-ip | isolate-host
+  useCase    String // CU-01 | CU-02 | CU-03
+  // block-ip | isolate-host | quarantine-email | close-no-action (politicas
+  // aprendidas del historial de cierres, src/recommender.js)
+  action     String
   conditions String // JSON, ver failedConditions() en src/automation.js
   updatedAt  DateTime @updatedAt
 

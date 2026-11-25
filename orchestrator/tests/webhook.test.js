@@ -20,7 +20,9 @@ test("el webhook normaliza y persiste una alerta de brute-force SSH", async () =
   expect(resp.body.source).toBe("wazuh");
   expect(resp.body.ruleId).toBe("5712");
   expect(resp.body.severity).toBe(10);
-  expect(resp.body.srcIp).toBe("203.0.113.55");
+  // La IP sale del mock: puede ser una IP real con mala reputacion, para ver
+  // la automatizacion por AbuseIPDB en una prueba manual.
+  expect(resp.body.srcIp).toBe(mockAlert.data.srcip);
   expect(resp.body.hostname).toBe("ip-10-0-1-23");
   expect(resp.body.status).toBe("new");
 });
@@ -37,5 +39,5 @@ test("GET /incidents devuelve la alerta persistida", async () => {
   const resp = await request(app).get("/api/v1/incidents").set("Authorization", `Bearer ${token}`);
 
   expect(resp.status).toBe(200);
-  expect(resp.body.some((i) => i.srcIp === "203.0.113.55")).toBe(true);
+  expect(resp.body.some((i) => i.srcIp === mockAlert.data.srcip)).toBe(true);
 });
